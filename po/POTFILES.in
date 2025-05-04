@@ -1,0 +1,8 @@
+# List of source files containing translatable strings.
+# Please keep this file sorted alphabetically.
+data/dev.seelos.drucken3d.desktop.in
+data/dev.seelos.drucken3d.metainfo.xml.in
+data/dev.seelos.drucken3d.gschema.xml
+src/main.py
+src/window.py
+src/window.ui

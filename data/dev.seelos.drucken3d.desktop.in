@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=drucken3d
+Exec=drucken3d
+Icon=dev.seelos.drucken3d
+Terminal=false
+Type=Application
+Categories=Utility;
+Keywords=GTK;
+StartupNotify=true
+DBusActivatable=true

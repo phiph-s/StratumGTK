@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0"/>
+  <requires lib="Adw" version="1.0"/>
+
+  <template class="Drucken3dWindow" parent="AdwApplicationWindow">
+    <property name="title" translatable="yes">Drucken3D</property>
+    <property name="default-width">800</property>
+    <property name="default-height">600</property>
+
+    <property name="content">
+      <object class="AdwToolbarView">
+        <child type="top">
+          <object class="AdwHeaderBar">
+            <child type="end">
+              <object class="GtkMenuButton">
+                <property name="icon-name">open-menu-symbolic</property>
+                <property name="tooltip-text" translatable="yes">Main Menu</property>
+                <property name="menu-model">primary_menu</property>
+              </object>
+            </child>
+          </object>
+        </child>
+
+        <property name="content">
+          <object class="GtkBox">
+            <property name="orientation">horizontal</property>
+
+            <!-- Sidebar (filament manager) -->
+            <child>
+              <object class="GtkBox" id="filament_panel">
+                <property name="orientation">vertical</property>
+                <property name="spacing">6</property>
+                <property name="margin-start">6</property>
+                <property name="margin-end">6</property>
+                <property name="margin-top">6</property>
+                <property name="margin-bottom">6</property>
+                <property name="width-request">240</property>
+
+                <child>
+                  <object class="GtkScrolledWindow">
+                    <property name="vexpand">True</property>
+                    <child>
+                      <object class="GtkListView" id="filament_list">
+                        <property name="vexpand">True</property>
+                        <signal name="activate" handler="on_filament_row_activate" swapped="no"/>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+
+                <child>
+                  <object class="GtkBox">
+                    <property name="orientation">horizontal</property>
+                    <property name="spacing">6</property>
+                    <child>
+                      <object class="GtkButton" id="redraw_button">
+                        <property name="icon-name">view-refresh-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Redraw Image</property>
+                        <signal name="clicked" handler="on_redraw_clicked" swapped="no"/>
+                      </object>
+                    </child>
+
+                    <child>
+                      <object class="GtkButton" id="add_filament_button">
+                        <property name="icon-name">list-add-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Add filament color</property>
+                        <signal name="clicked" handler="on_add_filament_clicked" swapped="no"/>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkButton" id="remove_filament_button">
+                        <property name="icon-name">list-remove-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Remove selected filament</property>
+                        <signal name="clicked" handler="on_remove_filament_clicked" swapped="no"/>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </child>
+
+            <!-- Main content area -->
+            <child>
+              <object class="GtkBox" id="main_content_area">
+                <child>
+                  <object class="GtkButton" id="load_image_button">
+                    <property name="icon-name">document-open-symbolic</property>
+                    <property name="tooltip-text">Load Image</property>
+                    <signal name="clicked" handler="on_load_image_clicked" swapped="no"/>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkImage" id="preview_image">
+                    <property name="vexpand">True</property>
+                    <property name="hexpand">True</property>
+                    <property name="halign">center</property>
+                    <property name="valign">center</property>
+                  </object>
+                </child>
+                <property name="orientation">vertical</property>
+                <property name="spacing">6</property>
+                <property name="vexpand">True</property>
+                <property name="hexpand">True</property>
+              </object>
+            </child>
+          </object>
+        </property>
+      </object>
+    </property>
+  </template>
+
+  <menu id="primary_menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">_Preferences</attribute>
+        <attribute name="action">app.preferences</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Keyboard Shortcuts</attribute>
+        <attribute name="action">win.show-help-overlay</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_About Drucken3D</attribute>
+        <attribute name="action">app.about</attribute>
+      </item>
+    </section>
+  </menu>
+</interface>
+
