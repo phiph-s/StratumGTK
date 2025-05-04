@@ -223,5 +223,5 @@ class Drucken3dWindow(Adw.ApplicationWindow):
         result_image = group_pixels_to_filaments(self._image.copy(), colors)
         polygons = create_layered_polygons(result_image, self._image, colors)
 
-        pixbuf = render_polygons_to_pixbuf(polygons, colors)
+        pixbuf = render_polygons_to_pixbuf(polygons, colors, result_image.size)
         self.mesh_view_container.set_from_pixbuf(pixbuf)

@@ -11,6 +11,7 @@ import trimesh
 from skimage.color import rgb2lab, deltaE_ciede2000
 import geopandas as gpd
 from gi.repository import Gtk, GdkPixbuf
+from descartes import PolygonPatch
 
 # Configuration defaults
 OUTPUT_DIR = 'meshes'
@@ -290,19 +291,46 @@ def polygons_to_meshes(segmented_image, polys_list, layer_height=0.2, base_layer
     return meshes
 
 
-def render_polygons_to_pixbuf(layered_polygons, filament_colors, width=400, height=400, bg_color='white'):
+import numpy as np
+import matplotlib
+matplotlib.use('Agg')  # non-interactive backend
+import matplotlib.pyplot as plt
+from shapely.geometry import Polygon, MultiPolygon
+from shapely.ops import unary_union
+from gi.repository import GdkPixbuf
+import io
+
+
+
+def render_polygons_to_pixbuf(layered_polygons, filament_colors,
+                               image_size=None, width=400, height=400,
+                               bg_color='white'):
     """
-    Render nested layers of polygons (list of lists/groups) with matching colors.
-    layered_polygons: [layer0, layer1, ...], each layer is a list of Polygon/MultiPolygon or groups thereof.
-    filament_colors: list of RGB tuples per layer.
+    Render nested layers of polygons with matching colors to a GdkPixbuf.Pixbuf.
+
+    - layered_polygons: list of layers, each a list of Polygon/MultiPolygon or groups thereof.
+    - filament_colors: list of RGB tuples per layer.
+    - image_size: optional (width_px, height_px) to match input image resolution.
+    - width, height: fallback output image size in pixels.
+    - bg_color: background color name, hex, or 'transparent'.
     """
-    # Flatten nested layers into parallel lists of geometries and colors
+    # Determine resolution
+    if image_size is not None:
+        width_px, height_px = image_size
+    else:
+        width_px, height_px = width, height
+    dpi = 100
+    fig_w = width_px / dpi
+    fig_h = height_px / dpi
+
+    # Flatten layers into lists of polygons, colors, and alphas
     flat_polys = []
     flat_colors = []
+    flat_alphas = []
     for layer_idx, layer_groups in enumerate(layered_polygons):
         color = filament_colors[layer_idx]
+        alpha = 1.0 if layer_idx == 0 else 0.3
         for group in layer_groups:
-            # group may be a single geometry or an iterable of geometries
             if isinstance(group, (Polygon, MultiPolygon)):
                 geom_list = [group]
             else:
@@ -310,37 +338,70 @@ def render_polygons_to_pixbuf(layered_polygons, filament_colors, width=400, heig
             for poly in geom_list:
                 flat_polys.append(poly)
                 flat_colors.append(color)
+                flat_alphas.append(alpha)
 
-    # Create matplotlib figure
-    fig = plt.figure(figsize=(width/100, height/100), dpi=100)
+    # Create figure and axis
+    fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi)
     ax = fig.add_axes([0, 0, 1, 1])
     ax.set_aspect('equal')
     ax.axis('off')
-    fig.patch.set_facecolor(bg_color)
-    ax.set_facecolor(bg_color)
 
-    # Draw each polygon with corresponding color
-    first = True
-    for poly, rgb in zip(flat_polys, flat_colors):
+    # Transparent background handling
+    transparent = (bg_color == 'transparent')
+    if transparent:
+        fig.patch.set_alpha(0.0)
+        ax.patch.set_alpha(0.0)
+    else:
+        fig.patch.set_facecolor(bg_color)
+        ax.set_facecolor(bg_color)
+
+    # Compute bounding box of all polygons
+    xs_all, ys_all = [], []
+    for poly in flat_polys:
+        if hasattr(poly, 'bounds'):
+            minx, miny, maxx, maxy = poly.bounds
+            xs_all.extend([minx, maxx])
+            ys_all.extend([miny, maxy])
+    if xs_all and ys_all:
+        ax.set_xlim(min(xs_all), max(xs_all))
+        ax.set_ylim(min(ys_all), max(ys_all))
+
+        # Draw polygons using even-odd fill to handle holes properly
+    from matplotlib.path import Path
+    from matplotlib.patches import PathPatch
+
+    for poly, rgb, alpha in zip(flat_polys, flat_colors, flat_alphas):
         if not hasattr(poly, 'is_empty') or poly.is_empty:
             continue
-        # handle MultiPolygon
         geoms = poly.geoms if isinstance(poly, MultiPolygon) else [poly]
         for geom in geoms:
-            xs, ys = geom.exterior.xy
-            alpha = 0.3
-            if first:
-                # First polygon is fully opaque
-                alpha = 1.0
-                first = False
-            ax.fill(xs, ys, facecolor=np.array(rgb)/255.0, edgecolor='black', linewidth=0.5, alpha=alpha)
+            # Build a path with exterior and interior rings
+            vertices = []
+            codes = []
+            # exterior ring
+            ext_coords = list(geom.exterior.coords)
+            vertices.extend(ext_coords)
+            codes.extend([Path.MOVETO] + [Path.LINETO]*(len(ext_coords)-2) + [Path.CLOSEPOLY])
+            # interior holes
             for interior in geom.interiors:
-                ix, iy = interior.xy
-                ax.fill(ix, iy, facecolor=bg_color, edgecolor='black', linewidth=0.5)
+                int_coords = list(interior.coords)
+                vertices.extend(int_coords)
+                codes.extend([Path.MOVETO] + [Path.LINETO]*(len(int_coords)-2) + [Path.CLOSEPOLY])
+            path = Path(vertices, codes)
+            patch = PathPatch(
+                path,
+                facecolor=np.array(rgb)/255.0,
+                linewidth=0,
+                alpha=alpha,
+                fill=True
+            )
+            # Set even-odd fill rule for holes
+            #patch.set_fillrule('evenodd')
+            ax.add_patch(patch)
 
-    # Render to PNG buffer
+    # Save to PNG buffer
     buf = io.BytesIO()
-    fig.canvas.print_png(buf)
+    fig.savefig(buf, format='png', dpi=dpi, transparent=transparent)
     plt.close(fig)
     buf.seek(0)
 
@@ -350,11 +411,3 @@ def render_polygons_to_pixbuf(layered_polygons, filament_colors, width=400, heig
     loader.close()
     pixbuf = loader.get_pixbuf()
     return pixbuf
-
-
-def store_meshes(meshes, output_dir=OUTPUT_DIR, filament_order=None):
-    ensure_dir(output_dir)
-    for idx, mesh in enumerate(meshes):
-        r, g, b = filament_order[idx + 1][:3]
-        mesh.export(os.path.join(output_dir, f'layer_{idx + 1}_{r}_{g}_{b}.stl'))
-        print(f"Exported layer {idx} with {len(mesh)} meshes")
