@@ -12,6 +12,13 @@
       <object class="AdwToolbarView">
         <child type="top">
           <object class="AdwHeaderBar">
+            <child type="start">
+              <object class="GtkButton" id="load_image_button">
+                <property name="icon-name">folder-open-symbolic</property>
+                <property name="tooltip-text" translatable="yes">Load Image</property>
+                <signal name="clicked" handler="on_load_image_clicked" swapped="no"/>
+              </object>
+            </child>
             <child type="end">
               <object class="GtkMenuButton">
                 <property name="icon-name">open-menu-symbolic</property>
@@ -82,26 +89,22 @@
 
             <!-- Main content area -->
             <child>
-              <object class="GtkBox" id="main_content_area">
+              <object class="GtkBox" id="main_content_area">+
                 <child>
-                  <object class="GtkButton" id="load_image_button">
-                    <property name="icon-name">document-open-symbolic</property>
-                    <property name="tooltip-text">Load Image</property>
-                    <signal name="clicked" handler="on_load_image_clicked" swapped="no"/>
-                  </object>
-                </child>
-                <child>
-                  <object class="GtkImage" id="preview_image">
+                  <object class="GtkScrolledWindow">
                     <property name="vexpand">True</property>
                     <property name="hexpand">True</property>
-                    <property name="halign">center</property>
-                    <property name="valign">center</property>
+                    <child>
+                      <object class="GtkImage" id="preview_image">
+                        <property name="vexpand">True</property>
+                        <property name="hexpand">True</property>
+                        <property name="halign">fill</property>
+                        <property name="valign">fill</property>
+                        <property name="icon-size">large</property> <!-- Optional visual aid -->
+                      </object>
+                    </child>
                   </object>
                 </child>
-                <property name="orientation">vertical</property>
-                <property name="spacing">6</property>
-                <property name="vexpand">True</property>
-                <property name="hexpand">True</property>
               </object>
             </child>
           </object>

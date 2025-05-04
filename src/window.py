@@ -9,6 +9,7 @@ from gettext import gettext as _
 from PIL import Image
 import os
 from .lib.mask_creation import group_pixels_to_filaments
+from .lib.mesh_generator import create_layered_meshes, render_layers_matplotlib
 
 
 class ColorObject(GObject.Object):
@@ -29,14 +30,11 @@ class Drucken3dWindow(Adw.ApplicationWindow):
     redraw_button: Gtk.Button = Gtk.Template.Child("redraw_button")
     load_image_button: Gtk.Button = Gtk.Template.Child("load_image_button")
     main_content_area: Gtk.Box = Gtk.Template.Child("main_content_area")
+    preview_image: Gtk.Image = Gtk.Template.Child("preview_image")
     
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        
-        print("UI that GTK loaded says:",
-        self.get_template_child(Drucken3dWindow, "add_filament_button")
-            .get_template_child.__doc__)
 
         self._store: Gio.ListStore = Gio.ListStore.new(ColorObject)
         self._selection = Gtk.SingleSelection(model=self._store)
@@ -52,15 +50,6 @@ class Drucken3dWindow(Adw.ApplicationWindow):
 
         # Main UI area placeholder
         self._main_content: Gtk.Box = self.get_template_child(Drucken3dWindow, "main_content_area")
-
-        
-        
-        self._image_area = Gtk.Image()
-        self._image_area.set_hexpand(True)
-        self._image_area.set_vexpand(True)
-        self._image_area.set_halign(Gtk.Align.FILL)
-        self._image_area.set_valign(Gtk.Align.FILL)
-        self._main_content.append(self._image_area)
 
     def _on_setup_item(self, _factory, list_item):
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
@@ -200,15 +189,6 @@ class Drucken3dWindow(Adw.ApplicationWindow):
             colors.append((int(rgba.red * 255), int(rgba.green * 255), int(rgba.blue * 255)))
 
         result_image = group_pixels_to_filaments(self._image.copy(), colors)
-        # Convert to GdkPixbuf and set in Gtk.Image
-        from gi.repository import GdkPixbuf
-        import io
 
-        with io.BytesIO() as output:
-            result_image.save(output, format="PNG")
-            output.seek(0)
-            loader = GdkPixbuf.PixbufLoader.new_with_type("png")
-            loader.write(output.read())
-            loader.close()
-            self._image_area.set_from_pixbuf(loader.get_pixbuf())
-
+        meshes = create_layered_meshes(result_image, self._image, colors)
+        render_layers_matplotlib(meshes, colors, self.preview_image)
