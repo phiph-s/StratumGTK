@@ -7,9 +7,10 @@ gi.require_version("Adw", "1")
 from gi.repository import Gtk, Gio, Gdk, GObject, GLib, Adw
 from gettext import gettext as _
 from PIL import Image
-import os
+import numpy as np
 from .lib.mask_creation import group_pixels_to_filaments
-from .lib.mesh_generator import create_layered_meshes, render_layers_matplotlib
+from .lib.mesh_generator import create_layered_meshes, create_layered_polygons, render_polygons_to_pixbuf
+from .mesh_gl_area import GLView
 
 
 class ColorObject(GObject.Object):
@@ -30,7 +31,7 @@ class Drucken3dWindow(Adw.ApplicationWindow):
     redraw_button: Gtk.Button = Gtk.Template.Child("redraw_button")
     load_image_button: Gtk.Button = Gtk.Template.Child("load_image_button")
     main_content_area: Gtk.Box = Gtk.Template.Child("main_content_area")
-    preview_image: Gtk.Image = Gtk.Template.Child("preview_image")
+    mesh_view_container: Gtk.Image = Gtk.Template.Child("mesh_view_container")
     
 
     def __init__(self, **kwargs):
@@ -40,6 +41,10 @@ class Drucken3dWindow(Adw.ApplicationWindow):
         self._selection = Gtk.SingleSelection(model=self._store)
         self.filament_list.set_model(self._selection)
 
+        # initialize with 2 default colors
+        self._store.append(ColorObject(Gdk.RGBA(0.0, 0.0, 0.0, 1.0)))  # Black
+        self._store.append(ColorObject(Gdk.RGBA(1.0, 1.0, 1.0, 1.0)))  # White
+
         factory = Gtk.SignalListItemFactory()
         factory.connect("setup", self._on_setup_item)
         factory.connect("bind", self._on_bind_item)
@@ -48,8 +53,12 @@ class Drucken3dWindow(Adw.ApplicationWindow):
         self._edit_index = -1
         self._image: Image.Image = None
 
-        # Main UI area placeholder
-        self._main_content: Gtk.Box = self.get_template_child(Drucken3dWindow, "main_content_area")
+        # load test image
+        self._image = Image.open("testimg.png")
+
+        # refresh the list
+        self._refresh_list()
+
 
     def _on_setup_item(self, _factory, list_item):
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
@@ -131,8 +140,13 @@ class Drucken3dWindow(Adw.ApplicationWindow):
 
     def _on_add_color_response(self, dialog, response_id):
         if response_id == Gtk.ResponseType.OK:
-            self._store.append(ColorObject(dialog.get_rgba()))
+            print ("Adding filament color", dialog.get_rgba())
+            self._store.insert(0,ColorObject(dialog.get_rgba()))
             self._refresh_list()
+            # print all colors
+            for i in range(self._store.get_n_items()):
+                color_obj: ColorObject = self._store.get_item(i)
+                print(f"Color {i}: {color_obj.rgba.to_string()}")
         dialog.destroy()
 
     @Gtk.Template.Callback()
@@ -160,7 +174,14 @@ class Drucken3dWindow(Adw.ApplicationWindow):
 
     @Gtk.Template.Callback()
     def on_load_image_clicked(self, *_):
-        dialog = Gtk.FileChooserNative(title="Open image", transient_for=self, action=Gtk.FileChooserAction.OPEN)
+        dialog = Gtk.FileChooserNative(
+            title="Open Image",
+            transient_for=self,
+            action=Gtk.FileChooserAction.OPEN,
+            accept_label="_Open",
+            cancel_label="_Cancel",
+        )
+
         filter_img = Gtk.FileFilter()
         filter_img.set_name("Image files")
         filter_img.add_mime_type("image/png")
@@ -168,27 +189,39 @@ class Drucken3dWindow(Adw.ApplicationWindow):
         filter_img.add_mime_type("image/bmp")
         dialog.add_filter(filter_img)
 
-        def response_cb(dlg, response):
+        def response_handler(dialog, response):
             if response == Gtk.ResponseType.ACCEPT:
-                filename = dlg.get_file().get_path()
-                self._image = Image.open(filename)
-            dlg.destroy()
+                file = dialog.get_file()
+                if file:
+                    filename = file.get_path()
+                    self._image = Image.open(filename)
+                    print(f"Loaded image: {filename}, size: {self._image.size}")
+            dialog.destroy()
 
-        dialog.connect("response", response_cb)
+        dialog.connect("response", response_handler)
         dialog.show()
-    
+
     @Gtk.Template.Callback()
     def on_redraw_clicked(self, *_):
         if not self._image or self._store.get_n_items() < 2:
             print("Need at least 2 filaments and a loaded image to redraw.")
             return
 
+        # 1) Gather your filament RGB colors (0–255) in reverse order
         colors = []
         for i in range(self._store.get_n_items() - 1, -1, -1):
             rgba = self._store.get_item(i).rgba
-            colors.append((int(rgba.red * 255), int(rgba.green * 255), int(rgba.blue * 255)))
+            colors.append((
+                int(rgba.red * 255),
+                int(rgba.green * 255),
+                int(rgba.blue * 255),
+            ))
 
+        print(colors)
+
+        # 2) Compute your per-layer meshes as before
         result_image = group_pixels_to_filaments(self._image.copy(), colors)
+        polygons = create_layered_polygons(result_image, self._image, colors)
 
-        meshes = create_layered_meshes(result_image, self._image, colors)
-        render_layers_matplotlib(meshes, colors, self.preview_image)
+        pixbuf = render_polygons_to_pixbuf(polygons, colors)
+        self.mesh_view_container.set_from_pixbuf(pixbuf)

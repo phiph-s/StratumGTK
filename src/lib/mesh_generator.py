@@ -1,3 +1,6 @@
+import io
+
+from matplotlib import pyplot as plt
 from shapely.geometry.linestring import LineString
 import os
 import numpy as np
@@ -6,12 +9,8 @@ from shapely.geometry import Polygon, MultiPolygon
 from shapely import affinity
 import trimesh
 from skimage.color import rgb2lab, deltaE_ciede2000
-from gi.repository import GdkPixbuf, Gtk
 import geopandas as gpd
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-import io
+from gi.repository import Gtk, GdkPixbuf
 
 # Configuration defaults
 OUTPUT_DIR = 'meshes'
@@ -88,6 +87,18 @@ def merge_layers_downward(meshes_list):
                 last = trimesh.util.concatenate(last, mesh)
                 meshes_list[-(i + 1)][-(j + 1)] = last
 
+def merge_polys_downward(polys_list):
+    last = None
+    for i, layer in enumerate(reversed(polys_list)):
+
+        for j, poly in enumerate(reversed(layer)):
+            if last is None:
+                last = poly
+            else:
+                last += poly
+            polys_list[-(i + 1)][-(j + 1)] = last[:]
+
+    return polys_list
 
 def create_layered_meshes(segmented_image, source_image, filament_order,
                       layer_height=0.2, base_layers=4,
@@ -176,75 +187,170 @@ def create_layered_meshes(segmented_image, source_image, filament_order,
 
     return meshes
 
+def _generate_base_mesh(segmented_image, layer_height=0.2, base_layers=4,
+                      target_max_cm=10, engine='triangle'):
+    base_height = layer_height * base_layers
+    w_px, h_px = segmented_image.size
+    scale_xy = (target_max_cm * 10) / max(w_px, h_px)
 
-def render_layers_to_image(layers, filament_colors, preview_image: Gtk.Image):
-    import pyrender
-    import trimesh
+    # Base layer
+    base_rect = Polygon([(0, 0), (w_px, 0), (w_px, h_px), (0, h_px)])
+    base_poly = flip_polygons_vertically([base_rect], h_px)
+    base_mesh = generate_layer_mesh(base_poly, base_height, engine)
+    if base_mesh:
+        base_mesh.apply_scale([scale_xy, scale_xy, 1])
+        return base_mesh, base_height
 
-    scene = pyrender.Scene(ambient_light=[0.9, 0.9, 0.9, 1.0])
-    for mesh, rgb in zip(layers, filament_colors):
-        color = [c / 255 for c in rgb] + [0.75]
-        mesh = mesh.copy()
-        material = pyrender.MetallicRoughnessMaterial(
-            baseColorFactor=color, alphaMode='BLEND'
-        )
-        scene.add(pyrender.Mesh.from_trimesh(mesh, material=material))
+def create_layered_polygons(segmented_image, source_image, filament_order,
+                      min_layers=1, max_layers=3,
+                      target_max_cm=10, engine='triangle'):
+    ensure_dir(OUTPUT_DIR)
 
-    # Set up top-down camera
-    cam = pyrender.OrthographicCamera(xmag=100, ymag=100)
-    scene.add(cam, pose=np.eye(4))
+    w_px, h_px = segmented_image.size
+    seg_arr = np.array(segmented_image.convert('RGBA'))
+    masks = extract_color_masks(seg_arr)
 
-    renderer = pyrender.OffscreenRenderer(512, 512)
-    color, _ = renderer.render(scene)
+    base_rect = Polygon([(0, 0), (w_px, 0), (w_px, h_px), (0, h_px)])
+    base_poly = flip_polygons_vertically([base_rect], h_px)
 
-    # Convert and load into Gtk.Image
-    from PIL import Image
-    import io
-    from gi.repository import GdkPixbuf
+    # Compute counts_map
+    counts_map = {}
+    rgb_np = np.asarray(source_image.convert("RGB")).astype(float) / 255.0
+    # Convert RGB image to LAB
+    lab_target = rgb2lab(rgb_np)
 
+    for idx in range(1, len(filament_order)):
+        prev = filament_order[idx - 1]
+        # Convert this filament’s color to LAB
+        prev_lab = rgb2lab(np.array(prev)[np.newaxis, np.newaxis, :] / 255.)  # shape: (1, 1, 3)
+
+        # Create region mask
+        region = np.zeros((h_px, w_px), dtype=bool)
+        for c in filament_order[idx:]:
+            if c in masks:
+                region |= masks[c]
+        if not region.any():
+            continue
+
+        # Compute perceptual color difference (ΔE) only in the region
+        prev_lab_img = np.tile(prev_lab, (h_px, w_px, 1))  # shape: (h_px, w_px, 3)
+        deltaE = deltaE_ciede2000(prev_lab_img, lab_target) * region
+
+        # Normalize ΔE and map to layer count
+        norm = deltaE / 100  # ΔE2000 is roughly 0–100
+        cnt = np.rint(min_layers + norm * (max_layers - min_layers)).astype(int)
+        cnt = np.clip(cnt, min_layers, max_layers) * region.astype(int)
+
+        counts_map[idx] = cnt
+
+    # Build meshes_map
+    polys_list = []
+    for idx in range(1, len(filament_order)):
+        cnt = counts_map.get(idx)
+        if cnt is None: continue
+        poly_list = []
+        for L in range(1, max_layers + 1):
+            mask_L = cnt >= L
+            if not mask_L.any(): continue
+            polys = mask_to_polygons(mask_L)
+            if not polys: continue
+            polys = flip_polygons_vertically(polys, h_px)
+            poly_list.append(polys)
+        if poly_list:
+            polys_list.append(poly_list)
+
+    # Merge downward without deleting layers
+    merge_polys_downward(polys_list)
+    polys_list.insert(0, base_poly)
+    return polys_list
+
+def polygons_to_meshes(segmented_image, polys_list, layer_height=0.2, base_layers=4, target_max_cm=10, engine='triangle'):
+    meshes_list = []
+    for idx, polys in enumerate(polys_list):
+        if not polys: continue
+        m = generate_layer_mesh(polys, layer_height, engine)
+        if m:
+            meshes_list.append(m)
+
+    base_mesh, base_height = _generate_base_mesh(segmented_image, layer_height, base_layers, target_max_cm, engine)
+    w_px, h_px = segmented_image.size
+    scale_xy = (target_max_cm * 10) / max(w_px, h_px)
+    meshes = [base_mesh] if base_mesh else []
+
+    current_z0 = base_height
+    for idx, mesh_list in enumerate(meshes_list):
+        for L, m in enumerate(mesh_list):
+            m.apply_translation([0, 0, current_z0])
+            if not m.is_empty:
+                current_z0 += layer_height
+        combined = trimesh.util.concatenate(mesh_list)
+        combined.apply_scale([scale_xy, scale_xy, 1])
+        meshes.append(combined)
+
+    return meshes
+
+
+def render_polygons_to_pixbuf(layered_polygons, filament_colors, width=400, height=400, bg_color='white'):
+    """
+    Render nested layers of polygons (list of lists/groups) with matching colors.
+    layered_polygons: [layer0, layer1, ...], each layer is a list of Polygon/MultiPolygon or groups thereof.
+    filament_colors: list of RGB tuples per layer.
+    """
+    # Flatten nested layers into parallel lists of geometries and colors
+    flat_polys = []
+    flat_colors = []
+    for layer_idx, layer_groups in enumerate(layered_polygons):
+        color = filament_colors[layer_idx]
+        for group in layer_groups:
+            # group may be a single geometry or an iterable of geometries
+            if isinstance(group, (Polygon, MultiPolygon)):
+                geom_list = [group]
+            else:
+                geom_list = list(group)
+            for poly in geom_list:
+                flat_polys.append(poly)
+                flat_colors.append(color)
+
+    # Create matplotlib figure
+    fig = plt.figure(figsize=(width/100, height/100), dpi=100)
+    ax = fig.add_axes([0, 0, 1, 1])
+    ax.set_aspect('equal')
+    ax.axis('off')
+    fig.patch.set_facecolor(bg_color)
+    ax.set_facecolor(bg_color)
+
+    # Draw each polygon with corresponding color
+    first = True
+    for poly, rgb in zip(flat_polys, flat_colors):
+        if not hasattr(poly, 'is_empty') or poly.is_empty:
+            continue
+        # handle MultiPolygon
+        geoms = poly.geoms if isinstance(poly, MultiPolygon) else [poly]
+        for geom in geoms:
+            xs, ys = geom.exterior.xy
+            alpha = 0.3
+            if first:
+                # First polygon is fully opaque
+                alpha = 1.0
+                first = False
+            ax.fill(xs, ys, facecolor=np.array(rgb)/255.0, edgecolor='black', linewidth=0.5, alpha=alpha)
+            for interior in geom.interiors:
+                ix, iy = interior.xy
+                ax.fill(ix, iy, facecolor=bg_color, edgecolor='black', linewidth=0.5)
+
+    # Render to PNG buffer
     buf = io.BytesIO()
-    Image.fromarray(color).save(buf, format="PNG")
-    loader = GdkPixbuf.PixbufLoader.new_with_type("png")
-    loader.write(buf.getvalue())
-    loader.close()
-    preview_image.set_from_pixbuf(loader.get_pixbuf())
-
-def render_layers_matplotlib(layers, filament_colors, preview_image: Gtk.Image):
-    fig = plt.figure(figsize=(5, 5), dpi=100)
-    ax = fig.add_subplot(111, projection='3d')
-    ax.view_init(elev=90, azim=-90)  # Top-down view
-
-    for mesh, color in zip(layers, filament_colors):
-        # Normalize to 0–1 and add alpha
-        rgba = [c / 255 for c in color] + [0.75]
-        ax.add_collection3d(
-            Poly3DCollection(mesh.triangles, facecolors=rgba, linewidths=0.1)
-        )
-
-    ax.set_axis_off()
-    ax.set_box_aspect([1, 1, 0.1])
-
-    # Fit to content
-    all_points = np.vstack([m.vertices for m in layers])
-    max_range = (all_points.max(axis=0) - all_points.min(axis=0)).max()
-    center = all_points.mean(axis=0)
-    ax.set_xlim(center[0] - max_range / 2, center[0] + max_range / 2)
-    ax.set_ylim(center[1] - max_range / 2, center[1] + max_range / 2)
-    ax.set_zlim(0, 1)
-
-    # Render to a buffer
-    canvas = FigureCanvas(fig)
-    buf = io.BytesIO()
-    canvas.print_png(buf)
+    fig.canvas.print_png(buf)
+    plt.close(fig)
     buf.seek(0)
 
-    # Load into Gtk.Image
-    loader = GdkPixbuf.PixbufLoader.new_with_type("png")
+    # Load into GdkPixbuf
+    loader = GdkPixbuf.PixbufLoader.new_with_type('png')
     loader.write(buf.getvalue())
     loader.close()
-    preview_image.set_from_pixbuf(loader.get_pixbuf())
+    pixbuf = loader.get_pixbuf()
+    return pixbuf
 
-    plt.close(fig)
 
 def store_meshes(meshes, output_dir=OUTPUT_DIR, filament_order=None):
     ensure_dir(output_dir)

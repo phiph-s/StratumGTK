@@ -89,20 +89,11 @@
 
             <!-- Main content area -->
             <child>
-              <object class="GtkBox" id="main_content_area">+
+              <object class="GtkBox" id="main_content_area">
                 <child>
-                  <object class="GtkScrolledWindow">
-                    <property name="vexpand">True</property>
+                  <object class="GtkImage" id="mesh_view_container">
                     <property name="hexpand">True</property>
-                    <child>
-                      <object class="GtkImage" id="preview_image">
-                        <property name="vexpand">True</property>
-                        <property name="hexpand">True</property>
-                        <property name="halign">fill</property>
-                        <property name="valign">fill</property>
-                        <property name="icon-size">large</property> <!-- Optional visual aid -->
-                      </object>
-                    </child>
+                    <property name="vexpand">True</property>
                   </object>
                 </child>
               </object>

@@ -2,12 +2,14 @@
 import sys
 import gi
 
+import os
+os.environ["SDL_VIDEO_X11_FORCE_EGL"] = "1"
+
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 
 from gi.repository import Gtk, Gio, Adw
 from .window import Drucken3dWindow
-
 
 class Drucken3dApplication(Adw.Application):
     """The main application singleton class."""

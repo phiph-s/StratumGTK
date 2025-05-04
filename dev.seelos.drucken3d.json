@@ -63,7 +63,11 @@
 { "type": "file", "path": "data/flatpak-sources/tifffile-2025.3.30-py3-none-any.whl" },
 { "type": "file", "path": "data/flatpak-sources/triangle-20250106-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl" },
 { "type": "file", "path": "data/flatpak-sources/trimesh-4.6.8-py3-none-any.whl" },
-{ "type": "file", "path": "data/flatpak-sources/tzdata-2025.2-py2.py3-none-any.whl" }
+{ "type": "file", "path": "data/flatpak-sources/tzdata-2025.2-py2.py3-none-any.whl" },
+        {
+          "type": "file",
+          "path": "data/flatpak-sources/vtk-9.4.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+        }
       ]
     },
     {
