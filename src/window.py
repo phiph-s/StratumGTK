@@ -11,7 +11,7 @@ from gettext import gettext as _
 from PIL import Image
 import numpy as np
 from .lib.mask_creation import generate_shades, segment_to_shades
-from .lib.mesh_generator import create_layered_polygons, render_polygons_to_pixbuf
+from .lib.mesh_generator import create_layered_polygons, render_polygons_to_pixbuf, polygons_to_meshes
 
 class ColorObject(GObject.Object):
     rgba = GObject.Property(type=Gdk.RGBA)
@@ -29,6 +29,7 @@ class Drucken3dWindow(Adw.ApplicationWindow):
     add_filament_button: Gtk.Button = Gtk.Template.Child("add_filament_button")
     remove_filament_button: Gtk.Button = Gtk.Template.Child("remove_filament_button")
     redraw_button: Gtk.Button = Gtk.Template.Child("redraw_button")
+    export_button: Gtk.Button = Gtk.Template.Child("export_button")
     load_image_button: Gtk.Button = Gtk.Template.Child("load_image_button")
     mesh_view_container: Gtk.Image = Gtk.Template.Child("mesh_view_container")
     main_content_stack = Gtk.Template.Child()
@@ -42,10 +43,6 @@ class Drucken3dWindow(Adw.ApplicationWindow):
         self._selection = Gtk.SingleSelection(model=self._store)
         self.filament_list.set_model(self._selection)
 
-        # initialize with 2 default colors
-        self._store.append(ColorObject(Gdk.RGBA(0.0, 0.0, 0.0, 1.0)))  # Black
-        self._store.append(ColorObject(Gdk.RGBA(1.0, 1.0, 1.0, 1.0)))  # White
-
         factory = Gtk.SignalListItemFactory()
         factory.connect("setup", self._on_setup_item)
         factory.connect("bind", self._on_bind_item)
@@ -54,11 +51,13 @@ class Drucken3dWindow(Adw.ApplicationWindow):
         self._edit_index = -1
         self._image: Image.Image = None
 
-        # load test image
-        self._image = Image.open("testimg.png")
-
         # refresh the list
         self._refresh_list()
+
+        self.export_button.set_sensitive(False)
+        self.segmented_image = None
+        self.shades = None
+        self.polygons = []
 
 
     def _on_setup_item(self, _factory, list_item):
@@ -211,6 +210,8 @@ class Drucken3dWindow(Adw.ApplicationWindow):
         # ➊ switch to loader page & start spinner
         self.main_content_stack.set_visible_child_name("loader")
         self.loader_spinner.start()
+        self.export_button.set_sensitive(False)
+        self.redraw_button.set_sensitive(False)
 
         # gather colors (unchanged)…
         colors = []
@@ -230,13 +231,62 @@ class Drucken3dWindow(Adw.ApplicationWindow):
         )
         thread.start()
 
+    @Gtk.Template.Callback()
+    def on_export_clicked(self, *_):
+        if self.polygons:
+            # open file dialog
+            dialog = Gtk.FileChooserNative(
+                title="Save Mesh",
+                transient_for=self,
+                action=Gtk.FileChooserAction.SAVE,
+                accept_label="_Save",
+                cancel_label="_Cancel",
+            )
+            #save stl files
+            filter_stl = Gtk.FileFilter()
+            filter_stl.set_name("STL files")
+            filter_stl.add_mime_type("application/sla")
+            filter_stl.add_mime_type("application/sla")
+            filter_stl.add_pattern("*.stl")
+            dialog.add_filter(filter_stl)
+            dialog.set_current_name("exported_mesh.stl")
+
+            def response_handler(dialog, response):
+                if response == Gtk.ResponseType.ACCEPT:
+                    file = dialog.get_file()
+                    if file:
+                        filename = file.get_path()
+                        print(f"Exporting to: {filename}")
+                        # save stl
+                        meshes = polygons_to_meshes(self.segmented_image, self.polygons[1:])
+                        print(meshes)
+                        # list of trimesh meshes
+                        for i, mesh in enumerate(meshes):
+                            # save each mesh as a separate file
+                            mesh.export(f"{filename}_{i}.stl")
+                            print(f"Exported {filename}_{i}.stl")
+
+                        # show success message
+                        success_dialog = Gtk.MessageDialog(
+                            transient_for=self,
+                            modal=True,
+                            message_type=Gtk.MessageType.INFO,
+                            buttons=Gtk.ButtonsType.OK,
+                            text=f"Exported {len(meshes)} meshes to {filename}_<index>.stl",
+                        )
+                        success_dialog.connect("response", lambda d, r: d.destroy())
+                        success_dialog.show()
+                dialog.destroy()
+
+            dialog.connect("response", response_handler)
+            dialog.show()
+
     def _background_redraw(self, colors):
         # heavy work off the UI thread
-        print(colors)
-        shades = generate_shades(colors)
-        segmented_image = segment_to_shades(self._image, shades)
-        polygons = create_layered_polygons(segmented_image, shades)
-        pixbuf = render_polygons_to_pixbuf(polygons, shades, segmented_image.size)
+        self.shades = generate_shades(colors)
+        self.segmented_image = segment_to_shades(self._image, self.shades)
+        self.polygons = create_layered_polygons(self.segmented_image, self.shades)
+        pixbuf = render_polygons_to_pixbuf(self.polygons, self.shades, self.segmented_image.size)
 
         # schedule back on main loop
         GLib.idle_add(self._finish_redraw, pixbuf)
@@ -247,4 +297,6 @@ class Drucken3dWindow(Adw.ApplicationWindow):
         self.loader_spinner.stop()
         # switch back to image page
         self.main_content_stack.set_visible_child_name("image")
+        self.export_button.set_sensitive(True)
+        self.redraw_button.set_sensitive(True)
         return False  # remove this idle callback

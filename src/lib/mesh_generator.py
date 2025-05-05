@@ -15,6 +15,8 @@ from gi.repository import Gtk, GdkPixbuf
 from descartes import PolygonPatch
 from functools import wraps
 
+from trimesh.path.packing import meshes
+
 # Configuration defaults
 OUTPUT_DIR = 'meshes'
 SIMPLIFY_TOLERANCE = 0.5  # Simplify tolerance for raw polygons
@@ -90,8 +92,19 @@ def flip_polygons_vertically(polygons, height_px):
 
 @timed
 def generate_layer_mesh(polygons, thickness, engine='triangle'):
+    print(type(polygons), polygons)
+    if isinstance(polygons, MultiPolygon):
+        polygons = [polygons]
+
+    flat_polys = []
+    for geom in polygons:
+        if isinstance(geom, MultiPolygon):
+            flat_polys.extend(geom.geoms)
+        else:
+            flat_polys.append(geom)
+
     meshes = []
-    for poly in polygons:
+    for poly in flat_polys:
         m = trimesh.creation.extrude_polygon(poly, thickness,
                                              triangulate_kwargs={'engine': engine})
         meshes.append(m)
@@ -224,10 +237,14 @@ def create_layered_polygons(
 def polygons_to_meshes(segmented_image, polys_list, layer_height=0.2, base_layers=4, target_max_cm=10, engine='triangle'):
     meshes_list = []
     for idx, polys in enumerate(polys_list):
-        if not polys: continue
-        m = generate_layer_mesh(polys, layer_height, engine)
-        if m:
-            meshes_list.append(m)
+        sublayers = []
+        for idy, sublayer in enumerate(polys):
+            m = generate_layer_mesh(sublayer, layer_height, engine)
+            if m: sublayers.append(m)
+        if sublayers:
+            meshes_list.append(sublayers)
+
+    print("meshes_list", meshes_list)
 
     base_mesh, base_height = _generate_base_mesh(segmented_image, layer_height, base_layers, target_max_cm, engine)
     w_px, h_px = segmented_image.size
