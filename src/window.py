@@ -4,14 +4,12 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 
-from gi.repository import Gtk, Gio, Gdk, GObject, GLib, Adw
+from gi.repository import Gtk, Gio, Gdk, GObject, GLib, Adw, GdkPixbuf
 from gettext import gettext as _
 from PIL import Image
 import numpy as np
-from .lib.mask_creation import group_pixels_to_filaments
-from .lib.mesh_generator import create_layered_meshes, create_layered_polygons, render_polygons_to_pixbuf
-from .mesh_gl_area import GLView
-
+from .lib.mask_creation import generate_shades, segment_to_shades
+from .lib.mesh_generator import create_layered_polygons, render_polygons_to_pixbuf
 
 class ColorObject(GObject.Object):
     rgba = GObject.Property(type=Gdk.RGBA)
@@ -217,11 +215,12 @@ class Drucken3dWindow(Adw.ApplicationWindow):
                 int(rgba.blue * 255),
             ))
 
-        print(colors)
-
         # 2) Compute your per-layer meshes as before
-        result_image = group_pixels_to_filaments(self._image.copy(), colors)
-        polygons = create_layered_polygons(result_image, self._image, colors)
+        shades = generate_shades(colors)
+        segmented_image = segment_to_shades(self._image, shades)
+        segmented_image.show()
 
-        pixbuf = render_polygons_to_pixbuf(polygons, colors, result_image.size)
+        polygons = create_layered_polygons(segmented_image, shades)
+
+        pixbuf = render_polygons_to_pixbuf(polygons, shades, segmented_image.size)
         self.mesh_view_container.set_from_pixbuf(pixbuf)

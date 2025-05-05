@@ -30,7 +30,6 @@ drucken3d_sources = [
   '__init__.py',
   'main.py',
   'window.py',
-  'mesh_gl_area.py',
  ]
 
 install_data(drucken3d_sources, install_dir: moduledir)

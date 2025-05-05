@@ -25,15 +25,22 @@ def ensure_dir(path):
         os.makedirs(path)
 
 
-def extract_color_masks(img_arr):
+def extract_color_masks(img_arr, filament_shades):
+    """
+    img_arr: H×W×4 (RGBA) numpy array
+    filament_shades: output of generate_shades()
+      a list of lists, so filament_shades[f][s] is an RGB tuple.
+    returns: dict keyed by (filament_index, shade_index) → boolean mask
+    """
     h, w = img_arr.shape[:2]
-    flat = img_arr.reshape(-1, img_arr.shape[2])
-    colors, inv = np.unique(flat, axis=0, return_inverse=True)
+    rgb = img_arr[..., :3]
     masks = {}
-    for idx, color in enumerate(map(tuple, colors)):
-        mask = (inv.reshape(h, w) == idx)
-        if mask.sum() and len(color) >= 3:
-            masks[color[:3]] = mask
+    for fi, shades in enumerate(filament_shades):
+        for si, shade in enumerate(shades):
+            # exact match on RGB channels
+            m = np.all(rgb == shade, axis=2)
+            if m.any():
+                masks[(fi, si)] = m
     return masks
 
 
@@ -88,105 +95,48 @@ def merge_layers_downward(meshes_list):
                 last = trimesh.util.concatenate(last, mesh)
                 meshes_list[-(i + 1)][-(j + 1)] = last
 
-def merge_polys_downward(polys_list):
-    last = None
-    for i, layer in enumerate(reversed(polys_list)):
+from shapely.ops import unary_union
 
-        for j, poly in enumerate(reversed(layer)):
-            if last is None:
-                last = poly
+def merge_polys_downward(polys_list):
+    """
+    In-place cumulative union of every sub-layer group with all above it.
+    Input: polys_list[layer][shade] is a list of Polygons (possibly empty).
+    After this runs, every cell polys_list[layer][shade] will be a single
+    Shapely geometry representing the union of itself and all groups above it.
+    """
+    accumulated = None
+
+    # Walk layers from top (last index) down to 0
+    for i in range(len(polys_list) - 1, -1, -1):
+        layer = polys_list[i]
+        # Walk shades from last to first
+        for j in range(len(layer) - 1, -1, -1):
+            group = layer[j]
+            # 1) flatten the small list-of-polygons into one geometry
+            if isinstance(group, list):
+                if not group:
+                    # empty group: nothing to union
+                    poly = None
+                else:
+                    poly = unary_union(group)
             else:
-                last += poly
-            polys_list[-(i + 1)][-(j + 1)] = last[:]
+                poly = group
+
+            if poly is None or poly.is_empty:
+                continue
+
+            # 2) merge into accumulated
+            if accumulated is None:
+                accumulated = poly
+            else:
+                accumulated = accumulated.union(poly)
+
+            # 3) write back the running union as a single geometry
+            polys_list[i][j] = accumulated
 
     return polys_list
 
-def create_layered_meshes(segmented_image, source_image, filament_order,
-                      layer_height=0.2, base_layers=4,
-                      min_layers=1, max_layers=3,
-                      target_max_cm=10, engine='triangle'):
-    ensure_dir(OUTPUT_DIR)
-    base_height = layer_height * base_layers
 
-    w_px, h_px = segmented_image.size
-    scale_xy = (target_max_cm * 10) / max(w_px, h_px)
-
-    src_arr = np.array(source_image.convert('RGBA'))
-
-    seg_arr = np.array(segmented_image.convert('RGBA'))
-    masks = extract_color_masks(seg_arr)
-
-    # Base layer
-    base_rect = Polygon([(0, 0), (w_px, 0), (w_px, h_px), (0, h_px)])
-    base_poly = flip_polygons_vertically([base_rect], h_px)
-    base_mesh = generate_layer_mesh(base_poly, base_height, engine)
-    if base_mesh:
-        base_mesh.apply_scale([scale_xy, scale_xy, 1])
-        r, g, b = filament_order[0][:3]
-        base_mesh.export(os.path.join(OUTPUT_DIR, f'layer_0_{r}_{g}_{b}.stl'))
-
-    # Compute counts_map
-    counts_map = {}
-    rgb_np = np.asarray(source_image.convert("RGB")).astype(float) / 255.0
-    # Convert RGB image to LAB
-    lab_target = rgb2lab(rgb_np)
-
-    for idx in range(1, len(filament_order)):
-        prev = filament_order[idx - 1]
-        # Convert this filament’s color to LAB
-        prev_lab = rgb2lab(np.array(prev)[np.newaxis, np.newaxis, :] / 255.)  # shape: (1, 1, 3)
-
-        # Create region mask
-        region = np.zeros((h_px, w_px), dtype=bool)
-        for c in filament_order[idx:]:
-            if c in masks:
-                region |= masks[c]
-        if not region.any():
-            continue
-
-        # Compute perceptual color difference (ΔE) only in the region
-        prev_lab_img = np.tile(prev_lab, (h_px, w_px, 1))  # shape: (h_px, w_px, 3)
-        deltaE = deltaE_ciede2000(prev_lab_img, lab_target) * region
-
-        # Normalize ΔE and map to layer count
-        norm = deltaE / 100  # ΔE2000 is roughly 0–100
-        cnt = np.rint(min_layers + norm * (max_layers - min_layers)).astype(int)
-        cnt = np.clip(cnt, min_layers, max_layers) * region.astype(int)
-
-        counts_map[idx] = cnt
-
-    # Build meshes_map
-    meshes_list = []
-    for idx in range(1, len(filament_order)):
-        cnt = counts_map.get(idx)
-        if cnt is None: continue
-        mesh_list = []
-        for L in range(1, max_layers + 1):
-            mask_L = cnt >= L
-            if not mask_L.any(): continue
-            polys = mask_to_polygons(mask_L)
-            if not polys: continue
-            polys = flip_polygons_vertically(polys, h_px)
-            m = generate_layer_mesh(polys, layer_height, engine)
-            if m: mesh_list.append(m)
-        if mesh_list:
-            meshes_list.append(mesh_list)
-
-    # Merge downward without deleting layers
-    merge_layers_downward(meshes_list)
-    meshes = [base_mesh] if base_mesh else []
-
-    current_z0 = base_height
-    for idx, mesh_list in enumerate(meshes_list):
-        for L, m in enumerate(mesh_list):
-            m.apply_translation([0, 0, current_z0])
-            if not m.is_empty:
-                current_z0 += layer_height
-        combined = trimesh.util.concatenate(mesh_list)
-        combined.apply_scale([scale_xy, scale_xy, 1])
-        meshes.append(combined)
-
-    return meshes
 
 def _generate_base_mesh(segmented_image, layer_height=0.2, base_layers=4,
                       target_max_cm=10, engine='triangle'):
@@ -202,67 +152,60 @@ def _generate_base_mesh(segmented_image, layer_height=0.2, base_layers=4,
         base_mesh.apply_scale([scale_xy, scale_xy, 1])
         return base_mesh, base_height
 
-def create_layered_polygons(segmented_image, source_image, filament_order,
-                      min_layers=1, max_layers=3,
-                      target_max_cm=10, engine='triangle'):
+def create_layered_polygons(
+    segmented_image,
+    shades,
+    max_layers=3,
+):
+    """
+    segmented_image: PIL Image whose pixels are exactly one of your shade RGB triples
+    shades: list of lists of RGB tuples, as from generate_shades()
+    """
     ensure_dir(OUTPUT_DIR)
-
     w_px, h_px = segmented_image.size
     seg_arr = np.array(segmented_image.convert('RGBA'))
-    masks = extract_color_masks(seg_arr)
 
-    base_rect = Polygon([(0, 0), (w_px, 0), (w_px, h_px), (0, h_px)])
-    base_poly = flip_polygons_vertically([base_rect], h_px)
+    # 1) extract masks for every (filament, shade) pair
+    masks = extract_color_masks(seg_arr, shades)
 
-    # Compute counts_map
+    # 2) build a per-filament count map from those masks
     counts_map = {}
-    rgb_np = np.asarray(source_image.convert("RGB")).astype(float) / 255.0
-    # Convert RGB image to LAB
-    lab_target = rgb2lab(rgb_np)
+    for fi in range(1, len(shades)):           # skip base at fi=0
+        cnt = np.zeros((h_px, w_px), dtype=int)
+        for si in range(len(shades[fi])):      # each shade = one sub-layer
+            m = masks.get((fi, si))
+            if m is not None:
+                cnt[m] = si + 1
+        counts_map[fi] = cnt
 
-    for idx in range(1, len(filament_order)):
-        prev = filament_order[idx - 1]
-        # Convert this filament’s color to LAB
-        prev_lab = rgb2lab(np.array(prev)[np.newaxis, np.newaxis, :] / 255.)  # shape: (1, 1, 3)
-
-        # Create region mask
-        region = np.zeros((h_px, w_px), dtype=bool)
-        for c in filament_order[idx:]:
-            if c in masks:
-                region |= masks[c]
-        if not region.any():
-            continue
-
-        # Compute perceptual color difference (ΔE) only in the region
-        prev_lab_img = np.tile(prev_lab, (h_px, w_px, 1))  # shape: (h_px, w_px, 3)
-        deltaE = deltaE_ciede2000(prev_lab_img, lab_target) * region
-
-        # Normalize ΔE and map to layer count
-        norm = deltaE / 100  # ΔE2000 is roughly 0–100
-        cnt = np.rint(min_layers + norm * (max_layers - min_layers)).astype(int)
-        cnt = np.clip(cnt, min_layers, max_layers) * region.astype(int)
-
-        counts_map[idx] = cnt
-
-    # Build meshes_map
+    # 3) extract and flip polygons for each filament & sub-layer threshold
     polys_list = []
-    for idx in range(1, len(filament_order)):
-        cnt = counts_map.get(idx)
-        if cnt is None: continue
+    for fi in range(1, len(shades)):
+        # poly_list[i] will be the list of polygons for sub-layer i+1
         poly_list = []
-        for L in range(1, max_layers + 1):
+
+        cnt = counts_map[fi]
+        for L in range(1, max_layers+1):
             mask_L = cnt >= L
-            if not mask_L.any(): continue
-            polys = mask_to_polygons(mask_L)
-            if not polys: continue
+            if not mask_L.any():
+                poly_list.append([])       # keep the slot, even if empty
+                continue
+            polys = mask_to_polygons(mask_L, min_area=MIN_AREA, simplify_tol=SIMPLIFY_TOLERANCE)
             polys = flip_polygons_vertically(polys, h_px)
             poly_list.append(polys)
-        if poly_list:
+
+        # only append if there’s at least one non-empty group
+        if any(poly_list):
             polys_list.append(poly_list)
 
-    # Merge downward without deleting layers
+    # merge_polys_downward will still work if you adapt it to nested lists
     merge_polys_downward(polys_list)
-    polys_list.insert(0, base_poly)
+
+    # prepend base
+    base = Polygon([(0,0),(w_px,0),(w_px,h_px),(0,h_px)])
+    base = flip_polygons_vertically([base], h_px)[0]
+    polys_list.insert(0, [[base]])  # note double brackets
+
     return polys_list
 
 def polygons_to_meshes(segmented_image, polys_list, layer_height=0.2, base_layers=4, target_max_cm=10, engine='triangle'):
@@ -302,112 +245,105 @@ import io
 
 
 
-def render_polygons_to_pixbuf(layered_polygons, filament_colors,
-                               image_size=None, width=400, height=400,
-                               bg_color='white'):
+def render_polygons_to_pixbuf(
+    layered_polygons,
+    filament_shades,
+    image_size=None,
+    width=400,
+    height=400,
+    bg_color='white'
+):
     """
-    Render nested layers of polygons with matching colors to a GdkPixbuf.Pixbuf.
+    Render each polygon in `layered_polygons` using its exact shade color.
 
-    - layered_polygons: list of layers, each a list of Polygon/MultiPolygon or groups thereof.
-    - filament_colors: list of RGB tuples per layer.
-    - image_size: optional (width_px, height_px) to match input image resolution.
-    - width, height: fallback output image size in pixels.
-    - bg_color: background color name, hex, or 'transparent'.
+    - layered_polygons: list of layers; each layer is a list of sub-layer groups,
+      and each sub-layer group is either a Polygon/MultiPolygon or an iterable of them.
+    - filament_shades: list of lists of RGB tuples, so filament_shades[layer_idx][shade_idx]
+      gives the exact color for that sub-layer.
+    - image_size: (w_px, h_px) to match input resolution, else use width/height.
+    - bg_color: background fill (name, hex, or 'transparent').
     """
-    # Determine resolution
-    if image_size is not None:
-        width_px, height_px = image_size
+    # 1) Determine output resolution
+    if image_size:
+        w_px, h_px = image_size
     else:
-        width_px, height_px = width, height
+        w_px, h_px = width, height
     dpi = 100
-    fig_w = width_px / dpi
-    fig_h = height_px / dpi
+    fig_w, fig_h = w_px / dpi, h_px / dpi
 
-    # Flatten layers into lists of polygons, colors, and alphas
-    flat_polys = []
-    flat_colors = []
-    flat_alphas = []
+    # 2) Flatten out all polys & assign each its precise shade color
+    flat_polys, flat_colors = [], []
     for layer_idx, layer_groups in enumerate(layered_polygons):
-        color = filament_colors[layer_idx]
-        alpha = 1.0 if layer_idx == 0 else 0.3
-        for group in layer_groups:
+        shades = filament_shades[layer_idx]
+        for shade_idx, group in enumerate(layer_groups):
+            color = shades[shade_idx] if shade_idx < len(shades) else shades[-1]
             if isinstance(group, (Polygon, MultiPolygon)):
-                geom_list = [group]
+                geoms = [group]
             else:
-                geom_list = list(group)
-            for poly in geom_list:
-                flat_polys.append(poly)
-                flat_colors.append(color)
-                flat_alphas.append(alpha)
+                geoms = list(group)
+            for poly in geoms:
+                if not getattr(poly, "is_empty", False):
+                    flat_polys.append(poly)
+                    flat_colors.append(color)
 
-    # Create figure and axis
+    # 3) Set up Matplotlib figure
     fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi)
     ax = fig.add_axes([0, 0, 1, 1])
     ax.set_aspect('equal')
     ax.axis('off')
 
-    # Transparent background handling
-    transparent = (bg_color == 'transparent')
-    if transparent:
+    # Background
+    if bg_color == 'transparent':
         fig.patch.set_alpha(0.0)
         ax.patch.set_alpha(0.0)
     else:
         fig.patch.set_facecolor(bg_color)
         ax.set_facecolor(bg_color)
 
-    # Compute bounding box of all polygons
-    xs_all, ys_all = [], []
+    # 4) Auto-zoom to all polygons
+    xs, ys = [], []
     for poly in flat_polys:
-        if hasattr(poly, 'bounds'):
-            minx, miny, maxx, maxy = poly.bounds
-            xs_all.extend([minx, maxx])
-            ys_all.extend([miny, maxy])
-    if xs_all and ys_all:
-        ax.set_xlim(min(xs_all), max(xs_all))
-        ax.set_ylim(min(ys_all), max(ys_all))
+        minx, miny, maxx, maxy = poly.bounds
+        xs.extend([minx, maxx])
+        ys.extend([miny, maxy])
+    if xs and ys:
+        ax.set_xlim(min(xs), max(xs))
+        ax.set_ylim(min(ys), max(ys))
 
-        # Draw polygons using even-odd fill to handle holes properly
+    # 5) Draw every shape with its shade (full opacity)
     from matplotlib.path import Path
     from matplotlib.patches import PathPatch
 
-    for poly, rgb, alpha in zip(flat_polys, flat_colors, flat_alphas):
-        if not hasattr(poly, 'is_empty') or poly.is_empty:
-            continue
+    for poly, rgb in zip(flat_polys, flat_colors):
         geoms = poly.geoms if isinstance(poly, MultiPolygon) else [poly]
         for geom in geoms:
-            # Build a path with exterior and interior rings
-            vertices = []
-            codes = []
-            # exterior ring
-            ext_coords = list(geom.exterior.coords)
-            vertices.extend(ext_coords)
-            codes.extend([Path.MOVETO] + [Path.LINETO]*(len(ext_coords)-2) + [Path.CLOSEPOLY])
-            # interior holes
+            # Exterior ring
+            verts = list(geom.exterior.coords)
+            codes = [Path.MOVETO] + [Path.LINETO]*(len(verts)-2) + [Path.CLOSEPOLY]
+            # Interior holes
             for interior in geom.interiors:
-                int_coords = list(interior.coords)
-                vertices.extend(int_coords)
-                codes.extend([Path.MOVETO] + [Path.LINETO]*(len(int_coords)-2) + [Path.CLOSEPOLY])
-            path = Path(vertices, codes)
+                icoords = list(interior.coords)
+                verts += icoords
+                codes += [Path.MOVETO] + [Path.LINETO]*(len(icoords)-2) + [Path.CLOSEPOLY]
+
+            path = Path(verts, codes)
             patch = PathPatch(
                 path,
                 facecolor=np.array(rgb)/255.0,
                 linewidth=0,
-                alpha=alpha,
                 fill=True
             )
-            # Set even-odd fill rule for holes
-            #patch.set_fillrule('evenodd')
             ax.add_patch(patch)
 
-    # Save to PNG buffer
+    # 6) Export to PNG in memory
     buf = io.BytesIO()
-    fig.savefig(buf, format='png', dpi=dpi, transparent=transparent)
+    fig.savefig(buf, format='png', dpi=dpi, transparent=(bg_color=='transparent'))
     plt.close(fig)
     buf.seek(0)
 
-    # Load into GdkPixbuf
+    # 7) Load into a GdkPixbuf
     loader = GdkPixbuf.PixbufLoader.new_with_type('png')
     loader.write(buf.getvalue())
     loader.close()
-    pixbuf = loader.get_pixbuf()
-    return pixbuf
+    return loader.get_pixbuf()
+
