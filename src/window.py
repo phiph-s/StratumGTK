@@ -1,3 +1,5 @@
+import threading
+
 import gi
 
 # GTK & Libadwaita -----------------------------------------------------------
@@ -28,8 +30,9 @@ class Drucken3dWindow(Adw.ApplicationWindow):
     remove_filament_button: Gtk.Button = Gtk.Template.Child("remove_filament_button")
     redraw_button: Gtk.Button = Gtk.Template.Child("redraw_button")
     load_image_button: Gtk.Button = Gtk.Template.Child("load_image_button")
-    main_content_area: Gtk.Box = Gtk.Template.Child("main_content_area")
     mesh_view_container: Gtk.Image = Gtk.Template.Child("mesh_view_container")
+    main_content_stack = Gtk.Template.Child()
+    loader_spinner = Gtk.Template.Child()
     
 
     def __init__(self, **kwargs):
@@ -205,7 +208,11 @@ class Drucken3dWindow(Adw.ApplicationWindow):
             print("Need at least 2 filaments and a loaded image to redraw.")
             return
 
-        # 1) Gather your filament RGB colors (0–255) in reverse order
+        # ➊ switch to loader page & start spinner
+        self.main_content_stack.set_visible_child_name("loader")
+        self.loader_spinner.start()
+
+        # gather colors (unchanged)…
         colors = []
         for i in range(self._store.get_n_items() - 1, -1, -1):
             rgba = self._store.get_item(i).rgba
@@ -215,12 +222,29 @@ class Drucken3dWindow(Adw.ApplicationWindow):
                 int(rgba.blue * 255),
             ))
 
-        # 2) Compute your per-layer meshes as before
+        # kick off background thread
+        thread = threading.Thread(
+            target=self._background_redraw,
+            args=(colors,),
+            daemon=True
+        )
+        thread.start()
+
+    def _background_redraw(self, colors):
+        # heavy work off the UI thread
+        print(colors)
         shades = generate_shades(colors)
         segmented_image = segment_to_shades(self._image, shades)
-        segmented_image.show()
-
         polygons = create_layered_polygons(segmented_image, shades)
-
         pixbuf = render_polygons_to_pixbuf(polygons, shades, segmented_image.size)
+
+        # schedule back on main loop
+        GLib.idle_add(self._finish_redraw, pixbuf)
+
+    def _finish_redraw(self, pixbuf):
+        # runs in GTK’s thread
         self.mesh_view_container.set_from_pixbuf(pixbuf)
+        self.loader_spinner.stop()
+        # switch back to image page
+        self.main_content_stack.set_visible_child_name("image")
+        return False  # remove this idle callback

@@ -1,4 +1,5 @@
 import io
+import time
 
 from matplotlib import pyplot as plt
 from shapely.geometry.linestring import LineString
@@ -12,12 +13,23 @@ from skimage.color import rgb2lab, deltaE_ciede2000
 import geopandas as gpd
 from gi.repository import Gtk, GdkPixbuf
 from descartes import PolygonPatch
+from functools import wraps
 
 # Configuration defaults
 OUTPUT_DIR = 'meshes'
 SIMPLIFY_TOLERANCE = 0.5  # Simplify tolerance for raw polygons
 SMOOTHING_WINDOW = 3  # Window size for contour smoothing
 MIN_AREA = 0.25  # Minimum polygon area to keep
+
+def timed(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        t0 = time.perf_counter()
+        result = func(*args, **kwargs)
+        t1 = time.perf_counter()
+        print(f"[TIMING] {func.__name__:25s}: {t1-t0:0.3f}s")
+        return result
+    return wrapper
 
 
 def ensure_dir(path):
@@ -44,6 +56,7 @@ def extract_color_masks(img_arr, filament_shades):
     return masks
 
 
+@timed
 def mask_to_polygons(mask, min_area=100, simplify_tol=1.0):
     # 1️⃣ Clean the raster mask – keep exactly the same pre-processing you had
     # mask = binary_fill_holes(mask)                        # fills boundary-connected zeros :contentReference[oaicite:1]{index=1}
@@ -75,7 +88,7 @@ def mask_to_polygons(mask, min_area=100, simplify_tol=1.0):
 def flip_polygons_vertically(polygons, height_px):
     return [affinity.scale(poly, xfact=1, yfact=-1, origin=(0, height_px)) for poly in polygons]
 
-
+@timed
 def generate_layer_mesh(polygons, thickness, engine='triangle'):
     meshes = []
     for poly in polygons:
@@ -84,7 +97,7 @@ def generate_layer_mesh(polygons, thickness, engine='triangle'):
         meshes.append(m)
     return trimesh.util.concatenate(meshes) if meshes else None
 
-
+@timed
 def merge_layers_downward(meshes_list):
     last = None
     for i, meshes in enumerate(meshes_list[::-1]):
@@ -96,7 +109,7 @@ def merge_layers_downward(meshes_list):
                 meshes_list[-(i + 1)][-(j + 1)] = last
 
 from shapely.ops import unary_union
-
+@timed
 def merge_polys_downward(polys_list):
     """
     In-place cumulative union of every sub-layer group with all above it.
@@ -151,7 +164,7 @@ def _generate_base_mesh(segmented_image, layer_height=0.2, base_layers=4,
     if base_mesh:
         base_mesh.apply_scale([scale_xy, scale_xy, 1])
         return base_mesh, base_height
-
+@timed
 def create_layered_polygons(
     segmented_image,
     shades,
@@ -244,7 +257,7 @@ from gi.repository import GdkPixbuf
 import io
 
 
-
+@timed
 def render_polygons_to_pixbuf(
     layered_polygons,
     filament_shades,

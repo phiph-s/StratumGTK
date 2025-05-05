@@ -89,7 +89,18 @@
 
             <!-- Main content area -->
             <child>
-              <object class="GtkBox" id="main_content_area">
+              <object class="GtkStack" id="main_content_stack">
+                <!-- Loader page -->
+                <child>
+                  <object class="GtkSpinner" id="loader_spinner">
+                    <property name="halign">center</property>
+                    <property name="valign">center</property>
+                    <!-- start hidden -->
+                    <property name="visible">False</property>
+                  </object>
+                </child>
+
+                <!-- Image page -->
                 <child>
                   <object class="GtkImage" id="mesh_view_container">
                     <property name="hexpand">True</property>
