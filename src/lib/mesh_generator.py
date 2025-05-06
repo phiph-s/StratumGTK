@@ -339,6 +339,60 @@ def polygons_to_meshes(segmented_image, polys_list, layer_height=0.2, base_layer
 
     return meshes
 
+def process_generate_layer_mesh(task):
+    idx, idy, sublayer, layer_height, engine = task
+    try:
+        m = generate_layer_mesh(sublayer, layer_height, engine)
+        return (idx, idy, m)
+    except Exception as e:
+        print(f"Error in generate_layer_mesh for layer {idx}, shade {idy}: {e}")
+        return (idx, idy, None)
+
+
+@timed
+def polygons_to_meshes_parallel(segmented_image, polys_list, layer_height=0.2, base_layers=4, target_max_cm=10, engine='triangle'):
+    tasks = []
+    for idx, polys in enumerate(polys_list):
+        for idy, sublayer in enumerate(polys):
+            print(f"DEBUG: scheduling layer {idx} shade {idy}")
+            tasks.append((idx, idy, sublayer, layer_height, engine))
+
+    with mp.Pool(processes=mp.cpu_count()) as pool:
+        results = pool.map(process_generate_layer_mesh, tasks)
+
+    # Rebuild meshes_list as [layer][shade] = mesh
+    meshes_dict = {}
+    for idx, idy, mesh in results:
+        if mesh:
+            meshes_dict.setdefault(idx, {})[idy] = mesh
+
+    meshes_list = []
+    for idx in sorted(meshes_dict.keys()):
+        shade_dict = meshes_dict[idx]
+        sublayers = [shade_dict[i] for i in sorted(shade_dict.keys())]
+        if sublayers:
+            meshes_list.append(sublayers)
+
+    merge_layers_downward(meshes_list)
+
+    base_mesh, base_height = _generate_base_mesh(segmented_image, layer_height, base_layers, target_max_cm, engine)
+    w_px, h_px = segmented_image.size
+    scale_xy = (target_max_cm * 10) / max(w_px, h_px)
+    meshes = [base_mesh] if base_mesh else []
+
+    current_z0 = base_height
+    for idx, mesh_list in enumerate(meshes_list):
+        for L, m in enumerate(mesh_list):
+            m.apply_translation([0, 0, current_z0])
+            if not m.is_empty:
+                current_z0 += layer_height
+        print(f"DEBUG: layer {idx} has {len(mesh_list)} meshes. Combined {len(mesh_list)} meshes into one.")
+        combined = trimesh.util.concatenate(mesh_list)
+        combined.apply_scale([scale_xy, scale_xy, 1])
+        meshes.append(combined)
+
+    return meshes
+
 
 import numpy as np
 import matplotlib
