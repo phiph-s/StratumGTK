@@ -11,7 +11,7 @@ from gettext import gettext as _
 from PIL import Image
 import numpy as np
 from .lib.mask_creation import generate_shades, segment_to_shades
-from .lib.mesh_generator import create_layered_polygons, render_polygons_to_pixbuf, polygons_to_meshes
+from .lib.mesh_generator import create_layered_polygons_parallel, render_polygons_to_pixbuf, polygons_to_meshes
 
 class ColorObject(GObject.Object):
     rgba = GObject.Property(type=Gdk.RGBA)
@@ -258,7 +258,7 @@ class Drucken3dWindow(Adw.ApplicationWindow):
                         filename = file.get_path()
                         print(f"Exporting to: {filename}")
                         # save stl
-                        meshes = polygons_to_meshes(self.segmented_image, self.polygons[1:], layer_height=0.12, target_max_cm=20)
+                        meshes = polygons_to_meshes(self.segmented_image, self.polygons[1:], layer_height=0.08, target_max_cm=25)
                         # list of trimesh meshes
                         for i, mesh in enumerate(meshes):
                             # save each mesh as a separate file
@@ -284,7 +284,7 @@ class Drucken3dWindow(Adw.ApplicationWindow):
         # heavy work off the UI thread
         self.shades = generate_shades(colors)
         self.segmented_image = segment_to_shades(self._image, self.shades)
-        self.polygons = create_layered_polygons(self.segmented_image, self.shades)
+        self.polygons = create_layered_polygons_parallel(self.segmented_image, self.shades)
         pixbuf = render_polygons_to_pixbuf(self.polygons, self.shades, self.segmented_image.size)
 
         # schedule back on main loop

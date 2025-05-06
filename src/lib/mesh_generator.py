@@ -105,9 +105,7 @@ def generate_layer_mesh(polygons, thickness, engine='triangle'):
     meshes = []
     for poly in flat_polys:
         if not poly.is_valid or poly.is_empty:
-            print("Invalid or empty polygon, skipping extrusion.")
             continue
-        print(f"Extruding polygon with area={poly.area:.4f}, bounds={poly.bounds}")
         m = trimesh.creation.extrude_polygon(poly, thickness,
                                              triangulate_kwargs={'engine': engine})
         meshes.append(m)
@@ -237,9 +235,81 @@ def create_layered_polygons(
 
     return polys_list
 
+import multiprocessing as mp
+from itertools import product
+
+
+def process_mask(task):
+    from shapely.geometry import Polygon  # If needed for serialization safety
+    (fi, L), mask, h_px = task
+    if not mask.any():
+        return (fi, L, [])
+    polys = mask_to_polygons(mask, min_area=MIN_AREA, simplify_tol=SIMPLIFY_TOLERANCE)
+    flipped = flip_polygons_vertically(polys, h_px)
+    return (fi, L, flipped)
+
+@timed
+def create_layered_polygons_parallel(
+    segmented_image,
+    shades,
+    max_layers=3,
+):
+    ensure_dir(OUTPUT_DIR)
+    w_px, h_px = segmented_image.size
+    seg_arr = np.array(segmented_image.convert('RGBA'))
+
+    # Step 1: extract masks
+    masks = extract_color_masks(seg_arr, shades)
+
+    # Step 2: build per-filament count maps
+    counts_map = {}
+    for fi in range(1, len(shades)):
+        cnt = np.zeros((seg_arr.shape[0], seg_arr.shape[1]), dtype=int)
+        for si in range(len(shades[fi])):
+            m = masks.get((fi, si))
+            if m is not None:
+                cnt[m] = si + 1
+        counts_map[fi] = cnt
+
+    h_px = seg_arr.shape[0]
+
+    # Step 3: Build all (fi, L) tasks
+    tasks = []
+    for fi in range(1, len(shades)):
+        cnt = counts_map[fi]
+        for L in range(1, max_layers + 1):
+            mask_L = cnt >= L
+            tasks.append(((fi, L), mask_L, h_px))
+
+    # Step 5: Run in parallel
+    with mp.Pool(processes=mp.cpu_count()) as pool:
+        results = pool.map(process_mask, tasks)
+
+    # Step 6: Reconstruct polys_list
+    shade_depth = max_layers
+    polys_map = {}  # (fi, L) → polys
+    for fi, L, polys in results:
+        polys_map.setdefault(fi, {})[L] = polys
+
+    polys_list = []
+    for fi in range(1, len(shades)):
+        poly_list = []
+        for L in range(1, max_layers + 1):
+            group = polys_map.get(fi, {}).get(L, [])
+            poly_list.append(group)
+        if any(poly_list):
+            polys_list.append(poly_list)
+
+    # Step 7: Prepend base
+    base = Polygon([(0, 0), (w_px, 0), (w_px, h_px), (0, h_px)])
+    base = flip_polygons_vertically([base], h_px)[0]
+    polys_list.insert(0, [[base]])
+
+    return polys_list
+
+
 def polygons_to_meshes(segmented_image, polys_list, layer_height=0.2, base_layers=4, target_max_cm=10, engine='triangle'):
     meshes_list = []
-    merge_layers_downward(meshes_list)
     for idx, polys in enumerate(polys_list):
         sublayers = []
         for idy, sublayer in enumerate(polys):
@@ -249,6 +319,7 @@ def polygons_to_meshes(segmented_image, polys_list, layer_height=0.2, base_layer
         if sublayers:
             meshes_list.append(sublayers)
 
+    merge_layers_downward(meshes_list)
 
     base_mesh, base_height = _generate_base_mesh(segmented_image, layer_height, base_layers, target_max_cm, engine)
     w_px, h_px = segmented_image.size
