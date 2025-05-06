@@ -258,8 +258,7 @@ class Drucken3dWindow(Adw.ApplicationWindow):
                         filename = file.get_path()
                         print(f"Exporting to: {filename}")
                         # save stl
-                        meshes = polygons_to_meshes(self.segmented_image, self.polygons[1:])
-                        print(meshes)
+                        meshes = polygons_to_meshes(self.segmented_image, self.polygons[1:], layer_height=0.12, target_max_cm=20)
                         # list of trimesh meshes
                         for i, mesh in enumerate(meshes):
                             # save each mesh as a separate file

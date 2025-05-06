@@ -92,8 +92,7 @@ def flip_polygons_vertically(polygons, height_px):
 
 @timed
 def generate_layer_mesh(polygons, thickness, engine='triangle'):
-    print(type(polygons), polygons)
-    if isinstance(polygons, MultiPolygon):
+    if not isinstance(polygons, list):
         polygons = [polygons]
 
     flat_polys = []
@@ -105,6 +104,10 @@ def generate_layer_mesh(polygons, thickness, engine='triangle'):
 
     meshes = []
     for poly in flat_polys:
+        if not poly.is_valid or poly.is_empty:
+            print("Invalid or empty polygon, skipping extrusion.")
+            continue
+        print(f"Extruding polygon with area={poly.area:.4f}, bounds={poly.bounds}")
         m = trimesh.creation.extrude_polygon(poly, thickness,
                                              triangulate_kwargs={'engine': engine})
         meshes.append(m)
@@ -225,7 +228,7 @@ def create_layered_polygons(
             polys_list.append(poly_list)
 
     # merge_polys_downward will still work if you adapt it to nested lists
-    merge_polys_downward(polys_list)
+    #merge_polys_downward(polys_list)
 
     # prepend base
     base = Polygon([(0,0),(w_px,0),(w_px,h_px),(0,h_px)])
@@ -236,15 +239,16 @@ def create_layered_polygons(
 
 def polygons_to_meshes(segmented_image, polys_list, layer_height=0.2, base_layers=4, target_max_cm=10, engine='triangle'):
     meshes_list = []
+    merge_layers_downward(meshes_list)
     for idx, polys in enumerate(polys_list):
         sublayers = []
         for idy, sublayer in enumerate(polys):
+            print (f"DEBUG: layer {idx} shade {idy}")
             m = generate_layer_mesh(sublayer, layer_height, engine)
             if m: sublayers.append(m)
         if sublayers:
             meshes_list.append(sublayers)
 
-    print("meshes_list", meshes_list)
 
     base_mesh, base_height = _generate_base_mesh(segmented_image, layer_height, base_layers, target_max_cm, engine)
     w_px, h_px = segmented_image.size
@@ -257,6 +261,7 @@ def polygons_to_meshes(segmented_image, polys_list, layer_height=0.2, base_layer
             m.apply_translation([0, 0, current_z0])
             if not m.is_empty:
                 current_z0 += layer_height
+        print (f"DEBUG: layer {idx} has {len(mesh_list)} meshes. Combined {len(mesh_list)} meshes into one.")
         combined = trimesh.util.concatenate(mesh_list)
         combined.apply_scale([scale_xy, scale_xy, 1])
         meshes.append(combined)
