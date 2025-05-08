@@ -275,55 +275,102 @@ class Drucken3dWindow(Adw.ApplicationWindow):
 
     @Gtk.Template.Callback()
     def on_export_clicked(self, *_):
-        if self.polygons:
-            # open file dialog
-            dialog = Gtk.FileChooserNative(
+        if not self.polygons:
+            return
+
+        # 1️⃣ Create a FileChooserNative for SAVE, with a .zip filter
+        chooser = Gtk.FileChooserNative(
                 title="Save Mesh",
                 transient_for=self,
                 action=Gtk.FileChooserAction.SAVE,
                 accept_label="_Save",
                 cancel_label="_Cancel",
             )
-            #save stl files
-            filter_stl = Gtk.FileFilter()
-            filter_stl.set_name("STL files")
-            filter_stl.add_mime_type("application/sla")
-            filter_stl.add_mime_type("application/sla")
-            filter_stl.add_pattern("*.stl")
-            dialog.add_filter(filter_stl)
-            dialog.set_current_name("exported_mesh.stl")
+        # Keep it referenced; GTK does not own it :contentReference[oaicite:9]{index=9}
 
-            def response_handler(dialog, response):
-                if response == Gtk.ResponseType.ACCEPT:
-                    file = dialog.get_file()
-                    if file:
-                        filename = file.get_path()
-                        print(f"Exporting to: {filename}")
+        chooser.set_current_name("meshes.zip")
+        zip_filter = Gtk.FileFilter()
+        zip_filter.set_name("ZIP archives")
+        zip_filter.add_pattern("*.zip")
+        chooser.add_filter(zip_filter)
 
-                        layer_height = self.layer_height_spin.get_value()
-                        max_size = self.max_size_spin.get_value()
-                        base_layers = self.base_layers_spin.get_value()
-                        meshes = polygons_to_meshes_parallel(self.segmented_image, self.polygons[1:],
-                                                             layer_height=layer_height,
-                                                             target_max_cm=max_size,
-                                                             base_layers=base_layers)
-                        # list of trimesh meshes
-                        for i, mesh in enumerate(meshes):
-                            # save each mesh as a separate file
-                            mesh.export(f"{filename}_{i}.stl")
-                            print(f"Exported {filename}_{i}.stl")
+        def _on_choice(dialog, response):
+            if response == Gtk.ResponseType.ACCEPT:
+                gfile = dialog.get_file()
+                if gfile:
+                    path = gfile.get_path()
+                    # ➡️ Launch the progress dialog + thread
+                    self._start_export_thread(path)
+            dialog.destroy()
 
-                        # show success message
-                        success_dialog = Gtk.MessageDialog(
-                            transient_for=self,
-                            modal=True,
-                            message_type=Gtk.MessageType.INFO,
-                            buttons=Gtk.ButtonsType.OK,
-                            text=f"Exported {len(meshes)} meshes to {filename}_<index>.stl",
-                        )
-                        success_dialog.connect("response", lambda d, r: d.destroy())
-                        success_dialog.show()
-                dialog.destroy()
+        chooser.connect("response", _on_choice)
+        chooser.show()
 
-            dialog.connect("response", response_handler)
-            dialog.show()
+    def _background_export(self, zip_path, progress_bar, dialog):
+        import zipfile
+        from io import BytesIO
+
+        # Helper to update UI safely
+        def _report(frac: float):
+            progress_bar.set_fraction(frac)
+            progress_bar.set_text(f"{int(frac * 100)}%")
+            return False  # one-shot callback
+
+        # 2️⃣ Create ZIP in write mode with DEFLATE compression :contentReference[oaicite:11]{index=11}
+        with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+            # Generate meshes; report progress via GLib.idle_add :contentReference[oaicite:12]{index=12}
+            meshes = polygons_to_meshes_parallel(
+                self.segmented_image,
+                self.polygons[1:],
+                layer_height=self.layer_height_spin.get_value(),
+                target_max_cm=self.max_size_spin.get_value(),
+                base_layers=self.base_layers_spin.get_value(),
+                progress_cb=lambda f: GLib.idle_add(_report, f)
+            )
+            # 3️⃣ Write each mesh into the zip using an in-memory buffer :contentReference[oaicite:13]{index=13}
+            for idx, mesh in enumerate(meshes):
+                buf = BytesIO()
+                mesh.export(file_obj=buf, file_type='stl')
+                archive.writestr(f"mesh_{idx}.stl",
+                                 buf.getvalue())  # grab bytes via getvalue() :contentReference[oaicite:14]{index=14}
+
+        # When done, schedule the finish callback on the GTK thread
+        GLib.idle_add(self._finish_export, len(meshes), dialog)  # :contentReference[oaicite:15]{index=15}
+
+    def _start_export_thread(self, zip_path):
+        # Build a modal dialog with NO close button
+        dlg = Gtk.Dialog(transient_for=self, modal=True, use_header_bar=True)
+        dlg.set_title("Exporting…")
+        dlg.set_deletable(False)  # remove “×” from headerbar :contentReference[oaicite:10]{index=10}
+
+        # Progress bar with padding
+        progress = Gtk.ProgressBar(show_text=True)
+        progress.set_margin_top(20)
+        progress.set_margin_bottom(20)
+        progress.set_margin_start(20)
+        progress.set_margin_end(20)
+
+        dlg.get_content_area().append(progress)
+        dlg.show()
+
+        # Spawn worker thread
+        thread = threading.Thread(
+            target=self._background_export,
+            args=(zip_path, progress, dlg),
+            daemon=True
+        )
+        thread.start()
+
+    def _finish_export(self, mesh_count, dialog):
+        dialog.destroy()
+        msg = Gtk.MessageDialog(
+            transient_for=self, modal=True,
+            message_type=Gtk.MessageType.INFO,
+            buttons=Gtk.ButtonsType.OK,
+            text=f"Exported {mesh_count} meshes into ZIP archive."
+        )
+        msg.connect("response", lambda d, r: d.destroy())
+        msg.show()
+        return False
+
+

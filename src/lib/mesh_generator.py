@@ -277,48 +277,72 @@ def process_generate_layer_mesh(task):
 
 
 @timed
-def polygons_to_meshes_parallel(segmented_image, polys_list, layer_height=0.2, base_layers=4, target_max_cm=10, engine='triangle'):
+def polygons_to_meshes_parallel(segmented_image,
+                                polys_list,
+                                layer_height=0.2,
+                                base_layers=4,
+                                target_max_cm=10,
+                                engine='triangle',
+                                progress_cb=None):
+    # 1) Flatten out all the (layer, shade, sublayer) tasks
     tasks = []
     for idx, polys in enumerate(polys_list):
         for idy, sublayer in enumerate(polys):
-            print(f"DEBUG: scheduling layer {idx} shade {idy}")
             tasks.append((idx, idy, sublayer, layer_height, engine))
+    total = len(tasks)
+    if total == 0:
+        if progress_cb:
+            progress_cb(1.0)
+        return []
 
+    # 2) Run them in a Pool, reporting progress as each result arrives
+    results = []
     with mp.Pool(processes=mp.cpu_count()) as pool:
-        results = pool.map(process_generate_layer_mesh, tasks)
+        for n, triple in enumerate(pool.imap(process_generate_layer_mesh, tasks), start=1):
+            results.append(triple)
+            if progress_cb:
+                progress_cb(n / total)
 
-    # Rebuild meshes_list as [layer][shade] = mesh
+    # 3) Rebuild into meshes_list[layer][shade]
     meshes_dict = {}
     for idx, idy, mesh in results:
         if mesh:
             meshes_dict.setdefault(idx, {})[idy] = mesh
 
     meshes_list = []
-    for idx in sorted(meshes_dict.keys()):
+    for idx in sorted(meshes_dict):
         shade_dict = meshes_dict[idx]
-        sublayers = [shade_dict[i] for i in sorted(shade_dict.keys())]
+        sublayers = [shade_dict[i] for i in sorted(shade_dict)]
         if sublayers:
             meshes_list.append(sublayers)
 
+    # 4) Merge downward and build the base
     merge_layers_downward(meshes_list)
+    base_mesh, base_height = _generate_base_mesh(
+        segmented_image, layer_height, base_layers, target_max_cm, engine
+    )
 
-    base_mesh, base_height = _generate_base_mesh(segmented_image, layer_height, base_layers, target_max_cm, engine)
+    # 5) Scale & stack each layer
     w_px, h_px = segmented_image.size
     scale_xy = (target_max_cm * 10) / max(w_px, h_px)
     meshes = [base_mesh] if base_mesh else []
-
     current_z0 = base_height
-    for idx, mesh_list in enumerate(meshes_list):
-        for L, m in enumerate(mesh_list):
+    for layer in meshes_list:
+        for m in layer:
             m.apply_translation([0, 0, current_z0])
             if not m.is_empty:
                 current_z0 += layer_height
-        print(f"DEBUG: layer {idx} has {len(mesh_list)} meshes. Combined {len(mesh_list)} meshes into one.")
-        combined = trimesh.util.concatenate(mesh_list)
+
+        combined = trimesh.util.concatenate(layer)
         combined.apply_scale([scale_xy, scale_xy, 1])
         meshes.append(combined)
 
+    # final callback = 100%
+    if progress_cb:
+        progress_cb(1.0)
+
     return meshes
+
 
 
 import numpy as np
