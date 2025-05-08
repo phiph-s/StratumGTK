@@ -8,7 +8,7 @@ os.environ["SDL_VIDEO_X11_FORCE_EGL"] = "1"
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 
-from gi.repository import Gtk, Gio, Adw
+from gi.repository import Gtk, Gio, Adw, Gdk
 from .window import Drucken3dWindow
 
 class Drucken3dApplication(Adw.Application):
@@ -21,6 +21,14 @@ class Drucken3dApplication(Adw.Application):
         self.create_action('quit', lambda *_: self.quit(), ['<primary>q'])
         self.create_action('about', self.on_about_action)
         self.create_action('preferences', self.on_preferences_action)
+
+        css_provider = Gtk.CssProvider()
+        css_provider.load_from_resource("/dev/seelos/drucken3d/style.css")
+        Gtk.StyleContext.add_provider_for_display(
+            Gdk.Display.get_default(),
+            css_provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
 
     def do_activate(self):
         """Called when the application is activated.

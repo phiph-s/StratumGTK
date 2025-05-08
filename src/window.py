@@ -38,7 +38,9 @@ class Drucken3dWindow(Adw.ApplicationWindow):
     layer_height_spin: Gtk.SpinButton = Gtk.Template.Child("layer_height_spin")
     base_layers_spin: Gtk.SpinButton = Gtk.Template.Child("base_layers_spin")
     max_size_spin: Gtk.SpinButton = Gtk.Template.Child("max_size_spin")
-    
+    redraw_banner = Gtk.Template.Child("redraw_banner")
+    progress = Gtk.Template.Child("progress")
+
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -63,6 +65,11 @@ class Drucken3dWindow(Adw.ApplicationWindow):
         self.shades = None
         self.polygons = []
 
+    def _on_filament_change(self, reason=None):
+        self.redraw_banner.set_revealed(True)
+        if reason is not None:
+            self.redraw_banner.set_title(reason)
+        else: self.redraw_banner.set_title("Filament list changed. Redraw required.")
 
     def _on_setup_item(self, _factory, list_item):
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
@@ -126,6 +133,7 @@ class Drucken3dWindow(Adw.ApplicationWindow):
             self._store.insert(index - 1, item)
             self._selection.set_selected(index - 1)
             self._refresh_list()
+            self._on_filament_change()
 
     def _on_move_down_clicked(self, _button, list_item):
         index = list_item.get_position()
@@ -135,6 +143,7 @@ class Drucken3dWindow(Adw.ApplicationWindow):
             self._store.insert(index + 1, item)
             self._selection.set_selected(index + 1)
             self._refresh_list()
+            self._on_filament_change()
 
     @Gtk.Template.Callback()
     def on_add_filament_clicked(self, *_):
@@ -147,10 +156,7 @@ class Drucken3dWindow(Adw.ApplicationWindow):
             print ("Adding filament color", dialog.get_rgba())
             self._store.insert(0,ColorObject(dialog.get_rgba()))
             self._refresh_list()
-            # print all colors
-            for i in range(self._store.get_n_items()):
-                color_obj: ColorObject = self._store.get_item(i)
-                print(f"Color {i}: {color_obj.rgba.to_string()}")
+            self._on_filament_change()
         dialog.destroy()
 
     @Gtk.Template.Callback()
@@ -159,6 +165,7 @@ class Drucken3dWindow(Adw.ApplicationWindow):
         if index != -1:
             self._store.remove(index)
             self._refresh_list()
+            self._on_filament_change()
 
     @Gtk.Template.Callback()
     def on_filament_row_activate(self, _view, position):
@@ -174,6 +181,7 @@ class Drucken3dWindow(Adw.ApplicationWindow):
             new = dialog.get_rgba()
             self._store.splice(self._edit_index, 1, [ColorObject(new)])
             self._refresh_list()
+            self._on_filament_change()
         dialog.destroy()
 
     @Gtk.Template.Callback()
@@ -203,6 +211,7 @@ class Drucken3dWindow(Adw.ApplicationWindow):
                     self.mesh_view_container.set_from_file(filename)
                     # switch back to image page
                     self.main_content_stack.set_visible_child_name("image")
+                    self._on_filament_change("Input image loaded. Redraw required.")
             dialog.destroy()
 
         dialog.connect("response", response_handler)
@@ -214,6 +223,10 @@ class Drucken3dWindow(Adw.ApplicationWindow):
         if not self._image or self._store.get_n_items() < 2:
             print("Need at least 2 filaments and a loaded image to redraw.")
             return
+
+        self.redraw_banner.set_revealed(False)
+        self.progress.set_fraction(0.05)
+        self.progress.set_visible(True)
 
         # ➊ switch to loader page & start spinner
         self.main_content_stack.set_visible_child_name("loader")
@@ -238,6 +251,27 @@ class Drucken3dWindow(Adw.ApplicationWindow):
             daemon=True
         )
         thread.start()
+
+    def _background_redraw(self, colors):
+        # heavy work off the UI thread
+        self.shades = generate_shades(colors)
+        self.segmented_image = segment_to_shades(self._image, self.shades)
+        self.polygons = create_layered_polygons_parallel(self.segmented_image, self.shades, progress_cb=self.progress.set_fraction)
+        pixbuf = render_polygons_to_pixbuf(self.polygons, self.shades, self.segmented_image.size, progress_cb=self.progress.set_fraction)
+
+        # schedule back on main loop
+        GLib.idle_add(self._finish_redraw, pixbuf)
+
+    def _finish_redraw(self, pixbuf):
+        # runs in GTK’s thread
+        self.mesh_view_container.set_from_pixbuf(pixbuf)
+        self.loader_spinner.stop()
+        # switch back to image page
+        self.main_content_stack.set_visible_child_name("image")
+        self.export_button.set_sensitive(True)
+        self.redraw_button.set_sensitive(True)
+        self.progress.set_visible(False)
+        return False  # remove this idle callback
 
     @Gtk.Template.Callback()
     def on_export_clicked(self, *_):
@@ -293,23 +327,3 @@ class Drucken3dWindow(Adw.ApplicationWindow):
 
             dialog.connect("response", response_handler)
             dialog.show()
-
-    def _background_redraw(self, colors):
-        # heavy work off the UI thread
-        self.shades = generate_shades(colors)
-        self.segmented_image = segment_to_shades(self._image, self.shades)
-        self.polygons = create_layered_polygons_parallel(self.segmented_image, self.shades)
-        pixbuf = render_polygons_to_pixbuf(self.polygons, self.shades, self.segmented_image.size)
-
-        # schedule back on main loop
-        GLib.idle_add(self._finish_redraw, pixbuf)
-
-    def _finish_redraw(self, pixbuf):
-        # runs in GTK’s thread
-        self.mesh_view_container.set_from_pixbuf(pixbuf)
-        self.loader_spinner.stop()
-        # switch back to image page
-        self.main_content_stack.set_visible_child_name("image")
-        self.export_button.set_sensitive(True)
-        self.redraw_button.set_sensitive(True)
-        return False  # remove this idle callback

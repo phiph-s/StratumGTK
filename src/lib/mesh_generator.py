@@ -11,7 +11,7 @@ from shapely import affinity
 import trimesh
 from skimage.color import rgb2lab, deltaE_ciede2000
 import geopandas as gpd
-from gi.repository import Gtk, GdkPixbuf
+from gi.repository import GLib
 from descartes import PolygonPatch
 from functools import wraps
 
@@ -178,62 +178,6 @@ def _generate_base_mesh(segmented_image, layer_height=0.2, base_layers=4,
     if base_mesh:
         base_mesh.apply_scale([scale_xy, scale_xy, 1])
         return base_mesh, base_height
-@timed
-def create_layered_polygons(
-    segmented_image,
-    shades,
-    max_layers=3,
-):
-    """
-    segmented_image: PIL Image whose pixels are exactly one of your shade RGB triples
-    shades: list of lists of RGB tuples, as from generate_shades()
-    """
-    ensure_dir(OUTPUT_DIR)
-    w_px, h_px = segmented_image.size
-    seg_arr = np.array(segmented_image.convert('RGBA'))
-
-    # 1) extract masks for every (filament, shade) pair
-    masks = extract_color_masks(seg_arr, shades)
-
-    # 2) build a per-filament count map from those masks
-    counts_map = {}
-    for fi in range(1, len(shades)):           # skip base at fi=0
-        cnt = np.zeros((h_px, w_px), dtype=int)
-        for si in range(len(shades[fi])):      # each shade = one sub-layer
-            m = masks.get((fi, si))
-            if m is not None:
-                cnt[m] = si + 1
-        counts_map[fi] = cnt
-
-    # 3) extract and flip polygons for each filament & sub-layer threshold
-    polys_list = []
-    for fi in range(1, len(shades)):
-        # poly_list[i] will be the list of polygons for sub-layer i+1
-        poly_list = []
-
-        cnt = counts_map[fi]
-        for L in range(1, max_layers+1):
-            mask_L = cnt >= L
-            if not mask_L.any():
-                poly_list.append([])       # keep the slot, even if empty
-                continue
-            polys = mask_to_polygons(mask_L, min_area=MIN_AREA, simplify_tol=SIMPLIFY_TOLERANCE)
-            polys = flip_polygons_vertically(polys, h_px)
-            poly_list.append(polys)
-
-        # only append if there’s at least one non-empty group
-        if any(poly_list):
-            polys_list.append(poly_list)
-
-    # merge_polys_downward will still work if you adapt it to nested lists
-    #merge_polys_downward(polys_list)
-
-    # prepend base
-    base = Polygon([(0,0),(w_px,0),(w_px,h_px),(0,h_px)])
-    base = flip_polygons_vertically([base], h_px)[0]
-    polys_list.insert(0, [[base]])  # note double brackets
-
-    return polys_list
 
 import multiprocessing as mp
 from itertools import product
@@ -253,27 +197,30 @@ def create_layered_polygons_parallel(
     segmented_image,
     shades,
     max_layers=3,
+    progress_cb=None,
 ):
+    """
+    :progress_cb: a callable progress_cb(completed: int, total: int) → bool
+                  should return False if you want to abort early.
+    """
+
     ensure_dir(OUTPUT_DIR)
     w_px, h_px = segmented_image.size
-    seg_arr = np.array(segmented_image.convert('RGBA'))
+    seg_arr = np.array(segmented_image.convert("RGBA"))
 
-    # Step 1: extract masks
+    # ---- steps 1 & 2 unchanged ----
     masks = extract_color_masks(seg_arr, shades)
-
-    # Step 2: build per-filament count maps
     counts_map = {}
     for fi in range(1, len(shades)):
-        cnt = np.zeros((seg_arr.shape[0], seg_arr.shape[1]), dtype=int)
+        cnt = np.zeros(seg_arr.shape[:2], dtype=int)
         for si in range(len(shades[fi])):
             m = masks.get((fi, si))
             if m is not None:
                 cnt[m] = si + 1
         counts_map[fi] = cnt
 
+    # ---- step 3: build tasks ----
     h_px = seg_arr.shape[0]
-
-    # Step 3: Build all (fi, L) tasks
     tasks = []
     for fi in range(1, len(shades)):
         cnt = counts_map[fi]
@@ -281,63 +228,43 @@ def create_layered_polygons_parallel(
             mask_L = cnt >= L
             tasks.append(((fi, L), mask_L, h_px))
 
-    # Step 5: Run in parallel
-    with mp.Pool(processes=mp.cpu_count()) as pool:
-        results = pool.map(process_mask, tasks)
+    total = len(tasks)
+    completed = 0
+    results = []
 
-    # Step 6: Reconstruct polys_list
-    shade_depth = max_layers
-    polys_map = {}  # (fi, L) → polys
+    # ---- step 5: run in parallel but iterate for progress ----
+    with mp.Pool(processes=mp.cpu_count()) as pool:
+        # imap yields one result at a time as soon as it's ready
+        for fi, L, polys in pool.imap_unordered(process_mask, tasks):
+            results.append((fi, L, polys))
+            completed += 1
+
+            if progress_cb:
+                # We must call into GTK from the main thread:
+                # GLib.idle_add will schedule the callback on the main loop.
+                # We pass fraction (0.0–1.0) or raw counts if you prefer.
+                def _emit(done, tot):
+                    # If callback returns False, that means “please abort”
+                    return progress_cb((done/tot) / 2)
+                GLib.idle_add(_emit, completed, total)
+
+    # ---- steps 6 & 7 unchanged ----
+    polys_map = {}
     for fi, L, polys in results:
         polys_map.setdefault(fi, {})[L] = polys
 
     polys_list = []
     for fi in range(1, len(shades)):
-        poly_list = []
-        for L in range(1, max_layers + 1):
-            group = polys_map.get(fi, {}).get(L, [])
-            poly_list.append(group)
+        poly_list = [polys_map.get(fi, {}).get(L, []) for L in range(1, max_layers + 1)]
         if any(poly_list):
             polys_list.append(poly_list)
 
-    # Step 7: Prepend base
     base = Polygon([(0, 0), (w_px, 0), (w_px, h_px), (0, h_px)])
     base = flip_polygons_vertically([base], h_px)[0]
     polys_list.insert(0, [[base]])
 
     return polys_list
 
-
-def polygons_to_meshes(segmented_image, polys_list, layer_height=0.2, base_layers=4, target_max_cm=10, engine='triangle'):
-    meshes_list = []
-    for idx, polys in enumerate(polys_list):
-        sublayers = []
-        for idy, sublayer in enumerate(polys):
-            print (f"DEBUG: layer {idx} shade {idy}")
-            m = generate_layer_mesh(sublayer, layer_height, engine)
-            if m: sublayers.append(m)
-        if sublayers:
-            meshes_list.append(sublayers)
-
-    merge_layers_downward(meshes_list)
-
-    base_mesh, base_height = _generate_base_mesh(segmented_image, layer_height, base_layers, target_max_cm, engine)
-    w_px, h_px = segmented_image.size
-    scale_xy = (target_max_cm * 10) / max(w_px, h_px)
-    meshes = [base_mesh] if base_mesh else []
-
-    current_z0 = base_height
-    for idx, mesh_list in enumerate(meshes_list):
-        for L, m in enumerate(mesh_list):
-            m.apply_translation([0, 0, current_z0])
-            if not m.is_empty:
-                current_z0 += layer_height
-        print (f"DEBUG: layer {idx} has {len(mesh_list)} meshes. Combined {len(mesh_list)} meshes into one.")
-        combined = trimesh.util.concatenate(mesh_list)
-        combined.apply_scale([scale_xy, scale_xy, 1])
-        meshes.append(combined)
-
-    return meshes
 
 def process_generate_layer_mesh(task):
     idx, idy, sublayer, layer_height, engine = task
@@ -411,7 +338,8 @@ def render_polygons_to_pixbuf(
     image_size=None,
     width=400,
     height=400,
-    bg_color='white'
+    bg_color='white',
+    progress_cb=None,
 ):
     """
     Render each polygon in `layered_polygons` using its exact shade color.
@@ -474,6 +402,8 @@ def render_polygons_to_pixbuf(
     from matplotlib.path import Path
     from matplotlib.patches import PathPatch
 
+    length = len(flat_polys)
+    current = 0
     for poly, rgb in zip(flat_polys, flat_colors):
         geoms = poly.geoms if isinstance(poly, MultiPolygon) else [poly]
         for geom in geoms:
@@ -494,6 +424,16 @@ def render_polygons_to_pixbuf(
                 fill=True
             )
             ax.add_patch(patch)
+        # 5.1) Progress callback
+        current += 1
+        if progress_cb and current % 30 == 0:
+            # We must call into GTK from the main thread:
+            # GLib.idle_add will schedule the callback on the main loop.
+            def _emit(done, tot):
+                # If callback returns False, that means “please abort”
+                return progress_cb((done/tot) / 2 + 0.5)
+            GLib.idle_add(_emit, current, length)
+
 
     # 6) Export to PNG in memory
     buf = io.BytesIO()
