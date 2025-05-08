@@ -32,8 +32,12 @@ class Drucken3dWindow(Adw.ApplicationWindow):
     export_button: Gtk.Button = Gtk.Template.Child("export_button")
     load_image_button: Gtk.Button = Gtk.Template.Child("load_image_button")
     mesh_view_container: Gtk.Image = Gtk.Template.Child("mesh_view_container")
-    main_content_stack = Gtk.Template.Child()
-    loader_spinner = Gtk.Template.Child()
+    main_content_stack = Gtk.Template.Child("main_content_stack")
+    loader_spinner = Gtk.Template.Child("loader_spinner")
+
+    layer_height_spin: Gtk.SpinButton = Gtk.Template.Child("layer_height_spin")
+    base_layers_spin: Gtk.SpinButton = Gtk.Template.Child("base_layers_spin")
+    max_size_spin: Gtk.SpinButton = Gtk.Template.Child("max_size_spin")
     
 
     def __init__(self, **kwargs):
@@ -196,10 +200,14 @@ class Drucken3dWindow(Adw.ApplicationWindow):
                     filename = file.get_path()
                     self._image = Image.open(filename)
                     print(f"Loaded image: {filename}, size: {self._image.size}")
+                    self.mesh_view_container.set_from_file(filename)
+                    # switch back to image page
+                    self.main_content_stack.set_visible_child_name("image")
             dialog.destroy()
 
         dialog.connect("response", response_handler)
         dialog.show()
+
 
     @Gtk.Template.Callback()
     def on_redraw_clicked(self, *_):
@@ -257,8 +265,14 @@ class Drucken3dWindow(Adw.ApplicationWindow):
                     if file:
                         filename = file.get_path()
                         print(f"Exporting to: {filename}")
-                        # save stl
-                        meshes = polygons_to_meshes_parallel(self.segmented_image, self.polygons[1:], layer_height=0.08, target_max_cm=25)
+
+                        layer_height = self.layer_height_spin.get_value()
+                        max_size = self.max_size_spin.get_value()
+                        base_layers = self.base_layers_spin.get_value()
+                        meshes = polygons_to_meshes_parallel(self.segmented_image, self.polygons[1:],
+                                                             layer_height=layer_height,
+                                                             target_max_cm=max_size,
+                                                             base_layers=base_layers)
                         # list of trimesh meshes
                         for i, mesh in enumerate(meshes):
                             # save each mesh as a separate file

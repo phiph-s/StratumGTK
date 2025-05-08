@@ -8,10 +8,17 @@
     <property name="default-width">800</property>
     <property name="default-height">600</property>
 
+    <child>
+      <object class="AdwBreakpoint">
+        <condition>max-width: 400sp</condition>
+        <setter object="split_view" property="collapsed">True</setter>
+      </object>
+    </child>
+
     <property name="content">
       <object class="AdwToolbarView">
         <child type="top">
-          <object class="AdwHeaderBar">
+          <object class="AdwHeaderBar" id="header_bar">
             <child type="start">
               <object class="GtkButton" id="load_image_button">
                 <property name="icon-name">folder-open-symbolic</property>
@@ -28,13 +35,11 @@
             </child>
           </object>
         </child>
-
         <property name="content">
-          <object class="GtkBox">
-            <property name="orientation">horizontal</property>
-
+          <object class="AdwOverlaySplitView" id="split_view">
+            <property name="min-sidebar-width">300</property>
             <!-- Sidebar (filament manager) -->
-            <child>
+            <property name="sidebar">
               <object class="GtkBox" id="filament_panel">
                 <property name="orientation">vertical</property>
                 <property name="spacing">6</property>
@@ -42,15 +47,30 @@
                 <property name="margin-end">12</property>
                 <property name="margin-top">12</property>
                 <property name="margin-bottom">12</property>
-                <property name="width-request">240</property>
+                <property name="width-request">150</property>
+                <child>
+                  <object class="GtkLabel">
+                    <property name="label" translatable="yes">Filaments</property>
+                    <property name="halign">start</property>
+                    <property name="margin-bottom">6</property>
+                    <style>
+                      <class name="heading"/>
+                    </style>
+                  </object>
+                </child>
+
 
                 <child>
-                  <object class="GtkScrolledWindow">
-                    <property name="vexpand">True</property>
+                  <object class="GtkFrame">
                     <child>
-                      <object class="GtkListView" id="filament_list">
+                      <object class="GtkScrolledWindow">
                         <property name="vexpand">True</property>
-                        <signal name="activate" handler="on_filament_row_activate" swapped="no"/>
+                        <child>
+                          <object class="GtkListView" id="filament_list">
+                            <property name="vexpand">True</property>
+                            <signal name="activate" handler="on_filament_row_activate" swapped="no"/>
+                          </object>
+                        </child>
                       </object>
                     </child>
                   </object>
@@ -76,36 +96,74 @@
                     </child>
                   </object>
                 </child>
-
                 <child>
-                  <object class="AdwSpinRow">
-                    <property name="title" translatable="yes">Layer Height (mm)</property>
-                    <property name="digits">2</property>
-                    <property name="numeric">true</property>
-                    <property name="adjustment">
-                      <object class="GtkAdjustment">
-                          <property name="lower">0.01</property>
-                          <property name="upper">1.0</property>
-                          <property name="step-increment">0.01</property>
-                          <property name="value">0.08</property>
+                  <object class="GtkBox">
+                    <property name="halign">center</property>
+                    <property name="orientation">vertical</property>
+                    <child>
+                      <object class="AdwPreferencesGroup">
+                        <property name="title" translatable="yes">Export Settings</property>
+                        <property name="halign">center</property>
+                        <property name="hexpand">false</property>
+                        <child>
+                          <object class="AdwSpinRow" id="layer_height_spin">
+                            <property name="title" translatable="yes">Layer Height</property>
+                            <property name="subtitle" translatable="yes">in millimeters</property>
+                            <property name="digits">2</property>
+                            <property name="numeric">true</property>
+                            <property name="adjustment">
+                              <object class="GtkAdjustment">
+                                <property name="lower">0.01</property>
+                                <property name="upper">1.0</property>
+                                <property name="step-increment">0.01</property>
+                                <property name="value">0.08</property>
+                              </object>
+                            </property>
+                            <property name="tooltip-text" translatable="yes">Set the layer height for the export</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwSpinRow" id="base_layers_spin">
+                            <property name="title" translatable="yes">Base Layers</property>
+                            <property name="subtitle" translatable="yes">Number of base layers</property>
+                            <property name="digits">0</property>
+                            <property name="numeric">true</property>
+                            <property name="adjustment">
+                              <object class="GtkAdjustment">
+                                <property name="lower">1</property>
+                                <property name="upper">10</property>
+                                <property name="step-increment">1</property>
+                                <property name="value">2</property>
+                              </object>
+                            </property>
+                            <property name="tooltip-text" translatable="yes">Set the number of base layers</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwSpinRow" id="max_size_spin">
+                            <property name="title" translatable="yes">Max Size</property>
+                            <property name="subtitle" translatable="yes">in centimeters</property>
+                            <property name="digits">1</property>
+                            <property name="numeric">true</property>
+                            <property name="adjustment">
+                              <object class="GtkAdjustment">
+                                <property name="lower">1.0</property>
+                                <property name="upper">200.0</property>
+                                <property name="step-increment">0.1</property>
+                                <property name="value">25.0</property>
+                              </object>
+                            </property>
+                            <property name="tooltip-text" translatable="yes">Set the maximum size for the export</property>
+                          </object>
+                        </child>
                       </object>
-                    </property>
-                    <property name="tooltip-text" translatable="yes">Set the layer height for the export</property>
+                    </child>
                   </object>
-
                 </child>
-
                 <child>
                   <object class="GtkBox">
                     <property name="orientation">horizontal</property>
                     <property name="spacing">6</property>
-                    <child>
-                      <object class="GtkButton" id="redraw_button">
-                        <property name="icon-name">view-refresh-symbolic</property>
-                        <property name="tooltip-text" translatable="yes">Redraw Image</property>
-                        <signal name="clicked" handler="on_redraw_clicked" swapped="no"/>
-                      </object>
-                    </child>
                     <child>
                       <object class="GtkButton" id="export_button">
                         <property name="label" translatable="yes">Export</property>
@@ -115,39 +173,76 @@
                   </object>
                 </child>
               </object>
-            </child>
+            </property>
 
             <!-- Main content area -->
-            <child>
-              <object class="GtkStack" id="main_content_stack">
-                <!-- Loader page -->
+            <property name="content">
+              <object class="GtkBox" id="main_content">
+                <property name="orientation">vertical</property>
                 <child>
-                  <object class="GtkStackPage">
-                    <property name="name">loader</property>
-                    <property name="child">
-                      <object class="GtkSpinner" id="loader_spinner">
-                        <property name="halign">center</property>
-                        <property name="valign">center</property>
-                        <property name="name">loader</property>
+                  <object class="GtkFrame">
+                    <property name="halign">fill</property>
+                    <property name="valign">fill</property>
+                    <property name="margin-start">12</property>
+                    <property name="margin-end">12</property>
+                    <property name="margin-top">12</property>
+                    <property name="margin-bottom">12</property>
+                    <child>
+                      <object class="GtkStack" id="main_content_stack">
+                        <!-- No image page -->
+                        <child>
+                          <object class="GtkStackPage">
+                            <property name="name">no_image</property>
+                            <property name="child">
+                              <object class="GtkLabel">
+                                <property name="label" translatable="yes">No image loaded</property>
+                                <property name="halign">center</property>
+                                <property name="valign">center</property>
+                              </object>
+                            </property>
+                          </object>
+                        </child>
+                        <!-- Loader page -->
+                        <child>
+                          <object class="GtkStackPage">
+                            <property name="name">loader</property>
+                            <property name="child">
+                              <object class="GtkSpinner" id="loader_spinner">
+                                <property name="halign">center</property>
+                                <property name="valign">center</property>
+                                <property name="name">loader</property>
+                              </object>
+                            </property>
+                          </object>
+                        </child>
+
+                        <!-- Image page -->
+                        <child>
+                          <object class="GtkStackPage">
+                            <property name="name">image</property>
+                            <property name="child">
+                              <object class="GtkImage" id="mesh_view_container">
+                                <property name="hexpand">True</property>
+                                <property name="vexpand">True</property>
+                              </object>
+                            </property>
+                          </object>
+                        </child>
                       </object>
-                    </property>
+                    </child>
                   </object>
                 </child>
-
-                <!-- Image page -->
                 <child>
-                  <object class="GtkStackPage">
-                    <property name="name">image</property>
-                    <property name="child">
-                      <object class="GtkImage" id="mesh_view_container">
-                        <property name="hexpand">True</property>
-                        <property name="vexpand">True</property>
-                      </object>
-                    </property>
+                  <object class="AdwBanner" id="redraw_button">
+                    <property name="title">Filament settings changed, preview is out of date.</property>
+                    <property name="tooltip-text" translatable="yes">Redraw Image</property>
+                    <property name="button-label">Redraw</property>
+                    <property name="revealed">true</property>
+                    <signal name="button-clicked" handler="on_redraw_clicked" swapped="no"/>
                   </object>
                 </child>
               </object>
-            </child>
+            </property>
           </object>
         </property>
       </object>
