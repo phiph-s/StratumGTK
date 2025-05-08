@@ -4,5 +4,7 @@
     <file preprocess="xml-stripblanks">window.ui</file>
     <file preprocess="xml-stripblanks">gtk/help-overlay.ui</file>
     <file>style.css</file>
+    <file>icons/dev.seelos.drucken3d.svg</file>
+    <file>icons/dev.seelos.drucken3d-symbolic.svg</file>
   </gresource>
 </gresources>

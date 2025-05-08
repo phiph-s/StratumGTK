@@ -66,6 +66,9 @@ class Drucken3dWindow(Adw.ApplicationWindow):
         self.polygons = []
 
     def _on_filament_change(self, reason=None):
+        if self._image is None:
+            self.redraw_banner.set_revealed(False)
+            return
         self.redraw_banner.set_revealed(True)
         if reason is not None:
             self.redraw_banner.set_title(reason)
