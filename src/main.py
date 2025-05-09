@@ -43,7 +43,7 @@ class Drucken3dApplication(Adw.Application):
 
     def on_about_action(self, *args):
         """Callback for the app.about action."""
-        about = Adw.AboutDialog(application_name='drucken3d',
+        about = Adw.AboutDialog(application_name='Stratum',
                                 application_icon='dev.seelos.drucken3d',
                                 developer_name='Philipp Seelos',
                                 version='0.1.0',

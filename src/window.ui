@@ -4,7 +4,7 @@
   <requires lib="Adw" version="1.0"/>
 
   <template class="Drucken3dWindow" parent="AdwApplicationWindow">
-    <property name="title" translatable="yes">Drucken3D</property>
+    <property name="title" translatable="yes">Stratum</property>
     <property name="default-width">800</property>
     <property name="default-height">600</property>
     <child>
@@ -277,7 +277,7 @@
         <attribute name="action">win.show-help-overlay</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">_About Drucken3D</attribute>
+        <attribute name="label" translatable="yes">_About Stratum</attribute>
         <attribute name="action">app.about</attribute>
       </item>
     </section>

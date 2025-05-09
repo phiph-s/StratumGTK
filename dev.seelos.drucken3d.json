@@ -1,9 +1,9 @@
 {
-  "id": "dev.seelos.drucken3d",
+  "id": "dev.seelos.stratum",
   "runtime": "org.gnome.Platform",
   "runtime-version": "47",
   "sdk": "org.gnome.Sdk",
-  "command": "drucken3d",
+  "command": "stratum",
   "finish-args": [
     "--share=network",
     "--share=ipc",
@@ -77,7 +77,7 @@
       ]
     },
     {
-      "name": "drucken3d",
+      "name": "stratum",
       "builddir": true,
       "buildsystem": "meson",
       "sources": [
