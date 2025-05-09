@@ -1,10 +1,10 @@
 [Desktop Entry]
-Name=drucken3d
+Name=Stratum
 Exec=drucken3d
 Icon=dev.seelos.drucken3d
 Terminal=false
 Type=Application
-Categories=Utility;
+Categories=Graphics;3DGraphics;ImageProcessing
 Keywords=GTK;
 StartupNotify=true
 DBusActivatable=true

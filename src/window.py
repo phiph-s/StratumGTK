@@ -1,6 +1,7 @@
 import threading
 
 import gi
+from mesonbuild.scripts.coverage import coverage
 
 # GTK & Libadwaita -----------------------------------------------------------
 gi.require_version("Gtk", "4.0")
@@ -15,10 +16,12 @@ from .lib.mesh_generator import create_layered_polygons_parallel, render_polygon
 
 class ColorObject(GObject.Object):
     rgba = GObject.Property(type=Gdk.RGBA)
+    cover_factor = GObject.Property(type=float)
 
-    def __init__(self, rgba):
+    def __init__(self, rgba, cover_factor):
         super().__init__()
         self.rgba = rgba
+        self.cover_factor = cover_factor
 
 
 @Gtk.Template(resource_path="/dev/seelos/drucken3d/window.ui")
@@ -87,37 +90,70 @@ class Drucken3dWindow(Adw.ApplicationWindow):
         down_button = Gtk.Button(icon_name="go-down-symbolic")
         down_button.connect("clicked", self._on_move_down_clicked, list_item)
 
-        label = Gtk.Label(xalign=0)
-        label.set_hexpand(True)
+        # Create the popover and add the cover factor spin button
+        popover = Gtk.Popover()
+        popover_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        popover.set_child(popover_box)
+
+        caption = Gtk.Label(label="Cover factor")
+        caption.set_tooltip_text("A lower cover factor means more more layers.\nUse a higher value for a more pigment-rich filament.")
+        caption.set_margin_top(6)
+        caption.set_margin_bottom(6)
+        caption.set_margin_start(6)
+        caption.set_margin_end(6)
+        caption.set_valign(Gtk.Align.CENTER)
+        caption.set_halign(Gtk.Align.CENTER)
+        caption.set_css_classes(["caption"])
+        popover_box.append(caption)
+
+        cover_factor = Gtk.SpinButton()
+        cover_factor.set_range(0, 1)
+        cover_factor.set_digits(2)
+        cover_factor.set_increments(0.01, 0.1)
+        cover_factor.set_numeric(True)
+        cover_factor.set_width_chars(4)
+        cover_factor.set_tooltip_text("Cover factor (0-1)")
+        cover_factor.set_valign(Gtk.Align.CENTER)
+        popover_box.append(cover_factor)
+
+        menu_button = Gtk.MenuButton(icon_name="preferences-color-symbolic", popover=popover)
+        menu_button.set_tooltip_text("Options")
+
 
         row.append(swatch)
         row.append(down_button)
         row.append(up_button)
-        row.append(label)
+        row.append(cover_factor)
+        row.append(menu_button)
 
         list_item.set_child(row)
         list_item.swatch = swatch
-        list_item.label = label
+        list_item.popover = popover
+        list_item.cover_factor = cover_factor
+        #list_item.label = label
 
     def _on_bind_item(self, _factory, list_item):
         color_obj: ColorObject = list_item.get_item()
         swatch: Gtk.Widget = list_item.swatch
-        label: Gtk.Label = list_item.label
+        cover_factor: Gtk.SpinButton = list_item.cover_factor
+        #label: Gtk.Label = list_item.label
 
-        index = list_item.get_position()
-        total = self._store.get_n_items()
+        #index = list_item.get_position()
+        #total = self._store.get_n_items()
 
-        if index == total - 1:
-            label.set_text("Base")
-        elif index == 0:
-            label.set_text("Top")
-        else:
-            label.set_text("")
+        #if index == total - 1:
+        #    label.set_text("Base")
+        #elif index == 0:
+        #    label.set_text("Top")
+        #else:
+        #    label.set_text("")
 
         rgba = color_obj.rgba
+        cover_factor.set_value(color_obj.cover_factor)
+        cover_factor.connect("value-changed", self._on_cover_factor_changed)
         css = Gtk.CssProvider()
         css.load_from_data(
-            f".color-swatch {{ background-color: {rgba.to_string()}; border-radius: 4px; }}".encode()
+            f".color-swatch {{ background-color: {rgba.to_string()}; border-radius: 16px; }}".encode()
         )
         swatch.get_style_context().add_provider(css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
 
@@ -157,7 +193,7 @@ class Drucken3dWindow(Adw.ApplicationWindow):
     def _on_add_color_response(self, dialog, response_id):
         if response_id == Gtk.ResponseType.OK:
             print ("Adding filament color", dialog.get_rgba())
-            self._store.insert(0,ColorObject(dialog.get_rgba()))
+            self._store.insert(0,ColorObject(dialog.get_rgba(), 0.25))
             self._refresh_list()
             self._on_filament_change()
         dialog.destroy()
@@ -176,16 +212,26 @@ class Drucken3dWindow(Adw.ApplicationWindow):
         color_obj: ColorObject = self._store.get_item(self._edit_index)
         dialog = Gtk.ColorChooserDialog(title="Change filament colour", transient_for=self, modal=True)
         dialog.set_rgba(color_obj.rgba)
+        dialog.cover_factor = color_obj.cover_factor
         dialog.connect("response", self._on_edit_color_response)
         dialog.present()
+
 
     def _on_edit_color_response(self, dialog, response_id):
         if response_id == Gtk.ResponseType.OK:
             new = dialog.get_rgba()
-            self._store.splice(self._edit_index, 1, [ColorObject(new)])
+            self._store.splice(self._edit_index, 1, [ColorObject(new, dialog.cover_factor)])
             self._refresh_list()
             self._on_filament_change()
         dialog.destroy()
+
+    def _on_cover_factor_changed(self, _spinbutton):
+        index = self._selection.get_selected()
+        print (f"Selected index: {index}")
+        if index != -1:
+            length = self._store.get_n_items()
+            self._store.get_item(length - index - 1).cover_factor = _spinbutton.get_value()
+            self._on_filament_change("Cover factor changed. Redraw required.")
 
     @Gtk.Template.Callback()
     def on_load_image_clicked(self, *_):
@@ -239,6 +285,7 @@ class Drucken3dWindow(Adw.ApplicationWindow):
 
         # gather colors (unchanged)…
         colors = []
+        cover_factors = []
         for i in range(self._store.get_n_items() - 1, -1, -1):
             rgba = self._store.get_item(i).rgba
             colors.append((
@@ -246,18 +293,23 @@ class Drucken3dWindow(Adw.ApplicationWindow):
                 int(rgba.green * 255),
                 int(rgba.blue * 255),
             ))
+            cover_factors.append(self._store.get_item(i).cover_factor)
+            print (f"Color {i}: {colors[-1]}, cover factor: {cover_factors[-1]}")
+
+        print (f"Colors: {colors}")
 
         # kick off background thread
         thread = threading.Thread(
             target=self._background_redraw,
-            args=(colors,),
+            args=(colors,cover_factors),
             daemon=True
         )
         thread.start()
 
-    def _background_redraw(self, colors):
+    def _background_redraw(self, colors, cover_factors):
+        print (f"Cover factors: {cover_factors}")
         # heavy work off the UI thread
-        self.shades = generate_shades(colors)
+        self.shades = generate_shades(colors, cover_factors)
         self.segmented_image = segment_to_shades(self._image, self.shades)
         self.polygons = create_layered_polygons_parallel(self.segmented_image, self.shades, progress_cb=self.progress.set_fraction)
         pixbuf = render_polygons_to_pixbuf(self.polygons, self.shades, self.segmented_image.size, progress_cb=self.progress.set_fraction)

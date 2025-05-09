@@ -13,6 +13,7 @@ def segment_to_shades(source_image: Image, filament_shades):
 
     # 2) flatten your shades into one array
     flat_shades = [shade for shade_list in filament_shades for shade in shade_list]
+    print (f"Total shades: {len(flat_shades)}")
     shade_rgb = np.array(flat_shades, dtype=float)  # (N, 3), still 0–255
 
     # normalize & convert to Lab
@@ -30,29 +31,45 @@ def segment_to_shades(source_image: Image, filament_shades):
     seg_flat_rgb = shade_rgb[nearest].astype(np.uint8)  # (H*W, 3)
     seg_rgb = seg_flat_rgb.reshape(h, w, 3)
 
+    print(f"Shades used: {np.unique(nearest)}")
+
     return Image.fromarray(seg_rgb, mode='RGB')
 
-def generate_shades(filament_order, overlay_factor=0.3, max_layers=3):
+def generate_shades(filament_order, cover_factors):
     """
-    From a flat list of base RGB filaments produce, for each filament,
-    a list of 'max_layers' blended shades against the previous filament.
-    The very first filament just has itself as a single shade.
+    Generate blended shades for a sequence of filaments based on individual cover factors.
+
+    Each filament after the first blends with the previous one using a number of layers
+    calculated as round(1 / cover_factor). The blending factor for each layer is
+    cover_factor * layer_number.
+
+    Args:
+        filament_order (list of (R, G, B)): List of filament base colors.
+        cover_factors (list of float): One per filament, in range (0, 1], defining blending strength.
+
+    Returns:
+        List of lists of RGB tuples: Shades per filament.
     """
     all_shades = []
+
     for i, cur in enumerate(filament_order):
         if i == 0:
-            # first filament: no blending underneath
+            # First filament: no blending
             all_shades.append([tuple(cur)])
         else:
-            prev = filament_order[i-1]
+            prev = filament_order[i - 1]
+            cover_factor = cover_factors[i]
+            max_layers = int(round(1 / cover_factor))
             shades = []
-            for L in range(1, max_layers+1):
-                blend = min(overlay_factor * L, 1.0)
-                # linear interpolate:  prev*(1−blend) + cur*blend
+
+            for L in range(1, max_layers + 1):
+                blend = min(cover_factor * L, 1.0)
                 shade = tuple(
                     int(round(prev[c] * (1 - blend) + cur[c] * blend))
                     for c in range(3)
                 )
                 shades.append(shade)
+
             all_shades.append(shades)
+
     return all_shades

@@ -196,7 +196,6 @@ def process_mask(task):
 def create_layered_polygons_parallel(
     segmented_image,
     shades,
-    max_layers=3,
     progress_cb=None,
 ):
     """
@@ -218,13 +217,14 @@ def create_layered_polygons_parallel(
             if m is not None:
                 cnt[m] = si + 1
         counts_map[fi] = cnt
+        print(f"Layer height {fi}: {np.unique(cnt)}")
 
     # ---- step 3: build tasks ----
     h_px = seg_arr.shape[0]
     tasks = []
     for fi in range(1, len(shades)):
         cnt = counts_map[fi]
-        for L in range(1, max_layers + 1):
+        for L in range(1, len(np.unique(cnt)) + 1):
             mask_L = cnt >= L
             tasks.append(((fi, L), mask_L, h_px))
 
@@ -255,7 +255,7 @@ def create_layered_polygons_parallel(
 
     polys_list = []
     for fi in range(1, len(shades)):
-        poly_list = [polys_map.get(fi, {}).get(L, []) for L in range(1, max_layers + 1)]
+        poly_list = [polys_map.get(fi, {}).get(L, []) for L in range(1, len(shades[fi]) + 1)]
         if any(poly_list):
             polys_list.append(poly_list)
 

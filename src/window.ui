@@ -106,6 +106,34 @@
                             <signal name="clicked" handler="on_remove_filament_clicked" swapped="no"/>
                           </object>
                         </child>
+                        <child>
+                            <object class="GtkSeparator"/>
+                        </child>
+                        <child>
+                          <object class="GtkButton" id="redraw_button">
+                            <property name="halign">center</property>
+                            <property name="valign">center</property>
+                            <signal name="clicked" handler="on_redraw_clicked" swapped="no"/>
+                            <style>
+                                <class name="suggested-action"/>
+                            </style>
+                            <property name="child">
+                              <object class="GtkBox">
+                                <property name="spacing">6</property>
+                                <child>
+                                  <object class="GtkImage">
+                                    <property name="icon-name">view-refresh-symbolic</property>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkLabel">
+                                    <property name="label">Redraw</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </property>
+                          </object>
+                        </child>
                       </object>
                     </child>
                     <child>
@@ -128,7 +156,7 @@
                                     <property name="lower">0.01</property>
                                     <property name="upper">1.0</property>
                                     <property name="step-increment">0.01</property>
-                                    <property name="value">0.08</property>
+                                    <property name="value">0.12</property>
                                   </object>
                                 </property>
                                 <property name="tooltip-text" translatable="yes">Set the layer height for the export</property>
@@ -176,15 +204,6 @@
                       <object class="GtkBox">
                         <property name="orientation">horizontal</property>
                         <property name="spacing">6</property>
-                        <child>
-                          <object class="GtkButton" id="redraw_button">
-                              <property name="label" translatable="yes">Redraw</property>
-                              <property name="icon-name">view-refresh-symbolic</property>
-                              <property name="halign">center</property>
-                              <property name="valign">center</property>
-                              <signal name="clicked" handler="on_redraw_clicked" swapped="no"/>
-                          </object>
-                        </child>
                         <child>
                           <object class="GtkButton" id="export_button">
                             <property name="label" translatable="yes">Export</property>
