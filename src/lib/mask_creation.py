@@ -60,6 +60,7 @@ def generate_shades(filament_order, cover_factors):
             prev = filament_order[i - 1]
             cover_factor = cover_factors[i]
             max_layers = int(round(1 / cover_factor))
+            print (f"Max layers for filament {i}: {max_layers}")
             shades = []
 
             for L in range(1, max_layers + 1):
@@ -71,5 +72,7 @@ def generate_shades(filament_order, cover_factors):
                 shades.append(shade)
 
             all_shades.append(shades)
-
+    print("Generated shades:")
+    for i, shades in enumerate(all_shades):
+        print(f"Filament {i}: {shades}")
     return all_shades

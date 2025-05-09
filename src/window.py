@@ -130,12 +130,14 @@ class Drucken3dWindow(Adw.ApplicationWindow):
         list_item.swatch = swatch
         list_item.popover = popover
         list_item.cover_factor = cover_factor
+        list_item.menu_button = menu_button
         #list_item.label = label
 
     def _on_bind_item(self, _factory, list_item):
         color_obj: ColorObject = list_item.get_item()
         swatch: Gtk.Widget = list_item.swatch
         cover_factor: Gtk.SpinButton = list_item.cover_factor
+        menu_button: Gtk.MenuButton = list_item.menu_button
         #label: Gtk.Label = list_item.label
 
         #index = list_item.get_position()
@@ -151,6 +153,7 @@ class Drucken3dWindow(Adw.ApplicationWindow):
         rgba = color_obj.rgba
         cover_factor.set_value(color_obj.cover_factor)
         cover_factor.connect("value-changed", self._on_cover_factor_changed)
+        cover_factor.color_index = list_item.get_position()
         css = Gtk.CssProvider()
         css.load_from_data(
             f".color-swatch {{ background-color: {rgba.to_string()}; border-radius: 16px; }}".encode()
@@ -226,11 +229,10 @@ class Drucken3dWindow(Adw.ApplicationWindow):
         dialog.destroy()
 
     def _on_cover_factor_changed(self, _spinbutton):
-        index = self._selection.get_selected()
+        index = _spinbutton.color_index
         print (f"Selected index: {index}")
         if index != -1:
-            length = self._store.get_n_items()
-            self._store.get_item(length - index - 1).cover_factor = _spinbutton.get_value()
+            self._store.get_item(index).cover_factor = _spinbutton.get_value()
             self._on_filament_change("Cover factor changed. Redraw required.")
 
     @Gtk.Template.Callback()

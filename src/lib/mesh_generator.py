@@ -19,9 +19,9 @@ from trimesh.path.packing import meshes
 
 # Configuration defaults
 OUTPUT_DIR = 'meshes'
-SIMPLIFY_TOLERANCE = 0.5  # Simplify tolerance for raw polygons
+SIMPLIFY_TOLERANCE = 1  # Simplify tolerance for raw polygons
 SMOOTHING_WINDOW = 3  # Window size for contour smoothing
-MIN_AREA = 0.25  # Minimum polygon area to keep
+MIN_AREA = 0.5  # Minimum polygon area to keep
 
 def timed(func):
     @wraps(func)
@@ -49,12 +49,18 @@ def extract_color_masks(img_arr, filament_shades):
     h, w = img_arr.shape[:2]
     rgb = img_arr[..., :3]
     masks = {}
+
+    used_shades = set() # to track used shades, prevent duplicates
     for fi, shades in enumerate(filament_shades):
         for si, shade in enumerate(shades):
+            if shade in used_shades:
+                print(f"Skipping duplicate shade {shade} for filament {fi}, shade {si}")
+                continue
             # exact match on RGB channels
             m = np.all(rgb == shade, axis=2)
             if m.any():
                 masks[(fi, si)] = m
+                used_shades.add(shade)
     return masks
 
 
