@@ -1,4 +1,8 @@
-# ![Stratum Icon](src/icons/dev.seelos.drucken3d.svg) Stratum
+<p align="center">
+  <img src='src/icons/dev.seelos.drucken3d.svg' width='150'>
+  
+  ## Stratum
+</p>
 
 Stratum is a GTK/LibAdwaita-based desktop application for converting a 2D image into layered 3D-printable meshes. It segments your image into a user-configurable number of shades (filaments), generates vector-style polygons for each shade, and exports them as a ZIP archive of STL files ready for multi-color or multi-material 3D printing.
 
