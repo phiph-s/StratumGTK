@@ -31,6 +31,10 @@ jobs:
             mingw-w64-ucrt-x86_64-glib2
             zip
 
+      - name: Install Dependencies
+        shell: msys2 {0}
+        run: |
+          pip install -r requirements.txt
 
       - name: Configure and build with Meson
         shell: msys2 {0}
