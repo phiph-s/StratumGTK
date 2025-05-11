@@ -1,7 +1,6 @@
 import threading
 
 import gi
-from mesonbuild.scripts.coverage import coverage
 
 # GTK & Libadwaita -----------------------------------------------------------
 gi.require_version("Gtk", "4.0")
