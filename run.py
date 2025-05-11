@@ -21,7 +21,9 @@ sys.path.insert(1, pkgdatadir)
 signal.signal(signal.SIGINT, signal.SIG_DFL)
 
 # i18n
-locale.bindtextdomain("drucken3d", localedir)
+try:
+    locale.bindtextdomain("drucken3d", localedir)
+pass
 locale.textdomain("drucken3d")
 gettext.install("drucken3d", localedir)
 
