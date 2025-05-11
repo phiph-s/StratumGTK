@@ -2,7 +2,7 @@ name: Build Flatpak
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
 
 jobs:
@@ -22,7 +22,7 @@ jobs:
       - name: Build Flatpak
         uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
-          manifest-path: dev.seelos.drucken3d
+          manifest-path: dev.seelos.drucken3d.json
           bundle: stratum.flatpak
           cache-key: flatpak-builder-${{ github.sha }}
           upload-artifact: true
