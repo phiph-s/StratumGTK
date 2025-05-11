@@ -2,7 +2,7 @@ name: Windows Build (Meson GTK4 Libadwaita)
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
 
 jobs:
