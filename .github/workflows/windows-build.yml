@@ -37,6 +37,7 @@ jobs:
             mingw-w64-ucrt-x86_64-python-scikit-image
             mingw-w64-ucrt-x86_64-python-shapely
             mingw-w64-ucrt-x86_64-python-trimesh
+            mingw-w64-ucrt-x86_64-python-pandas
             zip
 
       - name: Install pip packages with GDAL environment
