@@ -40,7 +40,7 @@ jobs:
           meson install -C builddir
 
       - name: Package (ZIP)
-        shell: bash
+        shell: msys2 {0}
         run: |
           cd build-install
           zip -r ../my-app-windows.zip *
