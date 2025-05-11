@@ -42,6 +42,8 @@ jobs:
       - name: Install Dependencies
         shell: msys2 {0}
         run: |
+          export GDAL_VERSION=$(gdal-config --version)
+          echo "Detected GDAL_VERSION=$GDAL_VERSION"
           pip install -r requirements.txt
 
       - name: Configure and build with Meson
