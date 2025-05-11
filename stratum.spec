@@ -1,11 +1,17 @@
 # drucken3d.spec
 
 block_cipher = None
+import os
+import site
+
+typelib_path = os.path.join(site.getsitepackages()[1], 'gnome', 'lib', 'girepository-1.0')
+# in the Analysis() constructor:
+binaries=[(os.path.join(typelib_path, tl), 'gi_typelibs') for tl in os.listdir(typelib_path)]
 
 a = Analysis(
     ['run.py'],
     pathex=['.'],
-    binaries=[],
+    binaries=binaries,
     datas=[
         ('build-install/share/*', 'share'),
     ],
