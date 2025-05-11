@@ -24,7 +24,8 @@ signal.signal(signal.SIGINT, signal.SIG_DFL)
 try:
     locale.bindtextdomain("drucken3d", localedir)
     locale.textdomain("drucken3d")
-pass
+except:
+    pass
 gettext.install("drucken3d", localedir)
 
 # Load GResource
