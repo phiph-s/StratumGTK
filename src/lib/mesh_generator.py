@@ -97,7 +97,7 @@ def flip_polygons_vertically(polygons, height_px):
     return [affinity.scale(poly, xfact=1, yfact=-1, origin=(0, height_px)) for poly in polygons]
 
 @timed
-def generate_layer_mesh(polygons, thickness, engine='triangle'):
+def generate_layer_mesh(polygons, thickness):
     if not isinstance(polygons, list):
         polygons = [polygons]
 
@@ -112,8 +112,7 @@ def generate_layer_mesh(polygons, thickness, engine='triangle'):
     for poly in flat_polys:
         if not poly.is_valid or poly.is_empty:
             continue
-        m = trimesh.creation.extrude_polygon(poly, thickness,
-                                             triangulate_kwargs={'engine': engine})
+        m = trimesh.creation.extrude_polygon(poly, thickness)
         meshes.append(m)
     return trimesh.util.concatenate(meshes) if meshes else None
 
@@ -172,7 +171,7 @@ def merge_polys_downward(polys_list):
 
 
 def _generate_base_mesh(segmented_image, layer_height=0.2, base_layers=4,
-                      target_max_cm=10, engine='triangle'):
+                      target_max_cm=10):
     base_height = layer_height * base_layers
     w_px, h_px = segmented_image.size
     scale_xy = (target_max_cm * 10) / max(w_px, h_px)
@@ -180,7 +179,7 @@ def _generate_base_mesh(segmented_image, layer_height=0.2, base_layers=4,
     # Base layer
     base_rect = Polygon([(0, 0), (w_px, 0), (w_px, h_px), (0, h_px)])
     base_poly = flip_polygons_vertically([base_rect], h_px)
-    base_mesh = generate_layer_mesh(base_poly, base_height, engine)
+    base_mesh = generate_layer_mesh(base_poly, base_height)
     if base_mesh:
         base_mesh.apply_scale([scale_xy, scale_xy, 1])
         return base_mesh, base_height
@@ -273,9 +272,9 @@ def create_layered_polygons_parallel(
 
 
 def process_generate_layer_mesh(task):
-    idx, idy, sublayer, layer_height, engine = task
+    idx, idy, sublayer, layer_height = task
     try:
-        m = generate_layer_mesh(sublayer, layer_height, engine)
+        m = generate_layer_mesh(sublayer, layer_height)
         return (idx, idy, m)
     except Exception as e:
         print(f"Error in generate_layer_mesh for layer {idx}, shade {idy}: {e}")
@@ -288,13 +287,12 @@ def polygons_to_meshes_parallel(segmented_image,
                                 layer_height=0.2,
                                 base_layers=4,
                                 target_max_cm=10,
-                                engine='triangle',
                                 progress_cb=None):
     # 1) Flatten out all the (layer, shade, sublayer) tasks
     tasks = []
     for idx, polys in enumerate(polys_list):
         for idy, sublayer in enumerate(polys):
-            tasks.append((idx, idy, sublayer, layer_height, engine))
+            tasks.append((idx, idy, sublayer, layer_height))
     total = len(tasks)
     if total == 0:
         if progress_cb:
@@ -325,7 +323,7 @@ def polygons_to_meshes_parallel(segmented_image,
     # 4) Merge downward and build the base
     merge_layers_downward(meshes_list)
     base_mesh, base_height = _generate_base_mesh(
-        segmented_image, layer_height, base_layers, target_max_cm, engine
+        segmented_image, layer_height, base_layers, target_max_cm
     )
 
     # 5) Scale & stack each layer

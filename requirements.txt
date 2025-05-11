@@ -1,12 +1,11 @@
-pycairo
-PyGObject==3.50.0
-meson
 pillow
+numpy
 shapely
 matplotlib
-numpy
 scikit-image
 trimesh
-triangle
+mapbox-earcut
 geopandas
 descartes
+#pyinstaller
+#requirements-parser
