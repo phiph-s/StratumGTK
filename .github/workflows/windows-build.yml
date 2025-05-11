@@ -29,6 +29,12 @@ jobs:
             mingw-w64-ucrt-x86_64-gettext
             mingw-w64-ucrt-x86_64-itstool
             mingw-w64-ucrt-x86_64-glib2
+            mingw-w64-ucrt-x86_64-python-pillow
+            mingw-w64-ucrt-x86_64-python-numpy
+            mingw-w64-ucrt-x86_64-python-matplotlib
+            mingw-w64-ucrt-x86_64-python-scikit-image
+            mingw-w64-ucrt-x86_64-python-shapely
+            mingw-w64-ucrt-x86_64-python-trimesh
             zip
 
       - name: Install Dependencies
