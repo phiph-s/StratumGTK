@@ -1,0 +1,12 @@
+pycairo
+PyGObject==3.50.0
+meson
+pillow
+shapely
+matplotlib
+numpy
+scikit-image
+trimesh
+triangle
+geopandas
+descartes
