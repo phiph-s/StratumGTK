@@ -38,6 +38,7 @@ jobs:
             mingw-w64-ucrt-x86_64-python-shapely
             mingw-w64-ucrt-x86_64-python-trimesh
             mingw-w64-ucrt-x86_64-python-pandas
+            mingw-w64-ucrt-x86_64-gobject-introspection-runtime
             zip
 
       - name: Install pip packages with GDAL environment
