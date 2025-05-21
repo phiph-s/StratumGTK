@@ -4,8 +4,14 @@ block_cipher = None
 import os
 import site
 
-typelib_path = os.path.join(site.getsitepackages()[1], 'gnome', 'lib', 'girepository-1.0')
-# in the Analysis() constructor:
+site_packages = site.getsitepackages()
+for path in site_packages:
+    possible_path = os.path.join(path, 'gnome', 'lib', 'girepository-1.0')
+    if os.path.exists(possible_path):
+        typelib_path = possible_path
+        break
+else:
+    raise FileNotFoundError("Could not find 'girepository-1.0' in site-packages paths.")
 binaries=[(os.path.join(typelib_path, tl), 'gi_typelibs') for tl in os.listdir(typelib_path)]
 
 a = Analysis(
