@@ -41,31 +41,22 @@ jobs:
             mingw-w64-ucrt-x86_64-gobject-introspection-runtime
             zip
 
-      
-      - name: Create and activate venv
-        shell: msys2 {0}
-        run: |
-          python -m venv venv
-          source venv/bin/activate
-
       - name: Install pip packages with GDAL environment
         shell: msys2 {0}
         run: |
-          source venv/bin/activate
           export GDAL_VERSION=$(gdal-config --version)
           export GDAL_INCLUDE_PATH=$(gdal-config --cflags | sed -n 's/.*-I\([^ ]*\).*/\1/p')
           export GDAL_LIBRARY_PATH=$(gdal-config --libs | sed -n 's/.*-L\([^ ]*\).*/\1/p')
           echo "Using GDAL_VERSION=$GDAL_VERSION"
           echo "Using GDAL_INCLUDE_PATH=$GDAL_INCLUDE_PATH"
           echo "Using GDAL_LIBRARY_PATH=$GDAL_LIBRARY_PATH"
-          pip install -r requirements.txt
+          pip install --user -r requirements.txt
           find D:/a/_temp/msys64/ucrt64 -name "*.typelib"
 
 
       - name: Configure and build with Meson
         shell: msys2 {0}
         run: |
-          source venv/bin/activate
           meson setup builddir --prefix="$PWD/build-install"
           meson compile -C builddir
           meson install -C builddir
@@ -73,8 +64,7 @@ jobs:
       - name: Install PyInstaller and build EXE
         shell: msys2 {0}
         run: |
-          source venv/bin/activate
-          pip install pyinstaller
+          pip install --user pyinstaller
           pyinstaller stratum.spec
 
       - name: Upload Executable
