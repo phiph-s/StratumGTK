@@ -4,14 +4,16 @@ block_cipher = None
 import os
 import site
 
-typelib_path = r'C:\msys64\ucrt64\lib\girepository-1.0'
+typelib_path = r'D:/a/_temp/msys64/ucrt64/lib/girepository-1.0'
+
 if not os.path.exists(typelib_path):
     raise FileNotFoundError(f"Typelib path not found: {typelib_path}")
 
-# Include all .typelib files
+# Bundle all .typelib files
 binaries = [
-    (os.path.join(typelib_path, tl), 'gi_typelibs') 
-    for tl in os.listdir(typelib_path) if tl.endswith('.typelib')
+    (os.path.join(typelib_path, tl), 'gi_typelibs')
+    for tl in os.listdir(typelib_path)
+    if tl.endswith('.typelib')
 ]
 
 a = Analysis(
