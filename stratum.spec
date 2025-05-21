@@ -21,7 +21,7 @@ a = Analysis(
     pathex=['.'],
     binaries=binaries,
     datas=[
-        ('build-install/share/*', '../share/Stratum'),
+        ('build-install/share/*', 'share'),
     ],
     hiddenimports=[],
     hookspath=[],
