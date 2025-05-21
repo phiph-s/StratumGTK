@@ -41,6 +41,13 @@ jobs:
             mingw-w64-ucrt-x86_64-gobject-introspection-runtime
             zip
 
+      
+      - name: Create and activate venv
+        shell: msys2 {0}
+        run: |
+          python -m venv venv
+          source venv/Scripts/activate
+
       - name: Install pip packages with GDAL environment
         shell: msys2 {0}
         run: |
