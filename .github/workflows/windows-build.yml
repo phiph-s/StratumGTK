@@ -51,6 +51,7 @@ jobs:
           echo "Using GDAL_INCLUDE_PATH=$GDAL_INCLUDE_PATH"
           echo "Using GDAL_LIBRARY_PATH=$GDAL_LIBRARY_PATH"
           pip install -r requirements.txt
+          find D:/a/_temp/msys64/ucrt64 -name "*.typelib"
 
 
       - name: Configure and build with Meson
