@@ -72,14 +72,14 @@ jobs:
           python -m venv venv
           cp -r /ucrt64/lib/python3.12/site-packages/* venv/lib/python3.12/site-packages/
           source venv/bin/activate
-
+          
       - name: Install pip packages with GDAL environment
         shell: msys2 {0}
         run: |
           source venv/bin/activate
           export GDAL_VERSION=$(gdal-config --version)
-          export GDAL_INCLUDE_PATH=$(gdal-config --cflags | sed -n 's/.*-I[^ ]*.*/\1/p')
-          export GDAL_LIBRARY_PATH=$(gdal-config --libs | sed -n 's/.*-L[^ ]*.*/\1/p')
+          export GDAL_INCLUDE_PATH=$(gdal-config --cflags | sed -n 's/.*-I\([^ ]*\).*/\1/p')
+          export GDAL_LIBRARY_PATH=$(gdal-config --libs | sed -n 's/.*-L\([^ ]*\).*/\1/p')
           echo "Using GDAL_VERSION=$GDAL_VERSION"
           echo "Using GDAL_INCLUDE_PATH=$GDAL_INCLUDE_PATH"
           echo "Using GDAL_LIBRARY_PATH=$GDAL_LIBRARY_PATH"
