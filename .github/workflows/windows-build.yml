@@ -94,6 +94,14 @@ jobs:
           mkdir -p "$PY_SITE/.libs"
           cp /ucrt64/bin/libgeos_c.dll "$PY_SITE/.libs/geos_c.dll"
 
+      - name: Verify .libs content after patch
+        shell: msys2 {0}
+        run: |
+          source venv/bin/activate
+          PY_SITE=$(python -c "import shapely, os; print(os.path.dirname(shapely.__file__))")
+          echo "Listing files in $PY_SITE/.libs"
+          ls -lh "$PY_SITE/.libs"
+
       - name: Configure and build with Meson
         shell: msys2 {0}
         run: |
