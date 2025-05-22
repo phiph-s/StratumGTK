@@ -66,14 +66,6 @@ jobs:
           echo "Checking .libs folder (if exists):"
           find $PY_SITE/.libs 2>/dev/null || echo ".libs folder not found"
 
-      
-      - name: Patch Shapely with GEOS DLL for PyInstaller
-        shell: msys2 {0}
-        run: |
-          PY_SITE=$(python -c "import shapely, os; print(os.path.dirname(shapely.__file__))")
-          mkdir -p "$PY_SITE/.libs"
-          cp /ucrt64/bin/libgeos_c.dll "$PY_SITE/.libs/geos_c.dll"
-
       - name: Create and activate venv
         shell: msys2 {0}
         run: |
@@ -93,6 +85,14 @@ jobs:
           echo "Using GDAL_LIBRARY_PATH=$GDAL_LIBRARY_PATH"
           pip install -r requirements.txt
           find D:/a/_temp/msys64/ucrt64 -name "*.typelib"
+
+      - name: Patch Shapely with GEOS DLL for PyInstaller
+        shell: msys2 {0}
+        run: |
+          source venv/bin/activate
+          PY_SITE=$(python -c "import shapely, os; print(os.path.dirname(shapely.__file__))")
+          mkdir -p "$PY_SITE/.libs"
+          cp /ucrt64/bin/libgeos_c.dll "$PY_SITE/.libs/geos_c.dll"
 
       - name: Configure and build with Meson
         shell: msys2 {0}
