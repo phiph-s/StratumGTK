@@ -39,6 +39,7 @@ jobs:
         with:
           msystem: UCRT64
           install: ${{ steps.msys2-list.outputs.packages }}
+      
 
       - name: Debug GEOS DLL location
         shell: msys2 {0}
@@ -77,7 +78,7 @@ jobs:
           echo "Using GDAL_INCLUDE_PATH=$GDAL_INCLUDE_PATH"
           echo "Using GDAL_LIBRARY_PATH=$GDAL_LIBRARY_PATH"
           pip install -r requirements.txt
-          find D:/a/_temp/msys64/ucrt64 -name "*.typelib"
+          python -c "from gi.repository import Gtk; print(Gtk.get_major_version(), Gtk.get_minor_version())"
 
       - name: Patch Shapely with GEOS DLL for PyInstaller
         shell: msys2 {0}
