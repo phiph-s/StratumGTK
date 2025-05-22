@@ -11,7 +11,7 @@ if not os.path.exists(typelib_path):
 
 # Bundle all .typelib files
 binaries = [
-    (os.path.join(typelib_path, tl), 'gi_typelibs')
+    (os.path.join(typelib_path, tl), 'girepository-1.0')
     for tl in os.listdir(typelib_path)
     if tl.endswith('.typelib')
 ]

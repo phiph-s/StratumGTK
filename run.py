@@ -4,6 +4,9 @@ import locale
 import gettext
 import signal
 
+if getattr(sys, 'frozen', False):
+    os.environ['GI_TYPELIB_PATH'] = os.path.join(sys._MEIPASS, 'girepository-1.0')
+
 import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
@@ -35,6 +38,8 @@ gettext.install("drucken3d", localedir)
 # Load GResource
 resource = Gio.Resource.load(resource_path)
 resource._register()
+
+print("GI_TYPELIB_PATH =", os.environ.get("GI_TYPELIB_PATH"))
 
 # Run main app
 from drucken3d import main
