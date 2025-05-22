@@ -32,10 +32,12 @@ jobs:
       - name: Read MSYS2 requirements
         id: msys2-list
         run: |
-          # join all lines into a single multiline output
+          # start our multiline output
           echo "packages<<EOF" >> $GITHUB_OUTPUT
-          cat msys2-requirements.txt  >> $GITHUB_OUTPUT
-          echo "EOF"       >> $GITHUB_OUTPUT
+          # cat only non-blank lines
+          sed '/^\s*$/d' msys2-requirements.txt >> $GITHUB_OUTPUT
+          # end our multiline output
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Set up MSYS2
         uses: msys2/setup-msys2@v2
