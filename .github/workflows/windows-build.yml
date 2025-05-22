@@ -107,7 +107,6 @@ jobs:
         shell: msys2 {0}
         run: |
           source venv/bin/activate
-          export PATH="/ucrt64/bin:$PATH"
           pip install pyinstaller
           pyinstaller --log-level=DEBUG stratum.spec
 
