@@ -16,6 +16,9 @@ binaries = [
     if tl.endswith('.typelib')
 ]
 
+libs_path = os.path.join(os.path.dirname(shapely.__file__), ".libs")
+binaries += [(os.path.join(libs_path, "geos_c.dll"), "shapely/.libs")]
+
 a = Analysis(
     ['run.py'],
     pathex=['.'],
