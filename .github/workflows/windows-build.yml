@@ -8,41 +8,34 @@ on:
 jobs:
   build-windows:
     runs-on: windows-latest
+    strategy:
+      matrix:
+        python-version: [3.12]
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Cache MSYS2 packages
+        uses: actions/cache@v3
+        with:
+          path: D:/a/_temp/msys64/ucrt64
+          key: msys2-${{ runner.os }}-ucrt64-${{ hashFiles('msys2-requirements.txt') }}
+
+      - name: Cache Python venv & pip
+        uses: actions/cache@v3
+        with:
+          path: |
+            venv
+            ~/.cache/pip
+          key: pip-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('requirements.txt') }}
 
       - name: Set up MSYS2
         uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
-          install: >-
-            mingw-w64-ucrt-x86_64-toolchain
-            mingw-w64-ucrt-x86_64-python
-            mingw-w64-ucrt-x86_64-python-pip
-            mingw-w64-ucrt-x86_64-python-gobject
-            mingw-w64-ucrt-x86_64-gtk4
-            mingw-w64-ucrt-x86_64-libadwaita
-            mingw-w64-ucrt-x86_64-meson
-            mingw-w64-ucrt-x86_64-ninja
-            mingw-w64-ucrt-x86_64-desktop-file-utils
-            mingw-w64-ucrt-x86_64-gettext
-            mingw-w64-ucrt-x86_64-itstool
-            mingw-w64-ucrt-x86_64-glib2
-            mingw-w64-ucrt-x86_64-gdal
-            mingw-w64-ucrt-x86_64-python-gdal
-            mingw-w64-ucrt-x86_64-python-pillow
-            mingw-w64-ucrt-x86_64-python-numpy
-            mingw-w64-ucrt-x86_64-python-matplotlib
-            mingw-w64-ucrt-x86_64-python-scikit-image
-            mingw-w64-ucrt-x86_64-python-shapely
-            mingw-w64-ucrt-x86_64-python-trimesh
-            mingw-w64-ucrt-x86_64-python-pandas
-            mingw-w64-ucrt-x86_64-gobject-introspection-runtime
-            mingw-w64-ucrt-x86_64-geos
-            zip
+          install: |
+            ${{ join(fromJson(file('msys2-requirements.txt')), '\n') }}
 
-      
       - name: Create and activate venv
         shell: msys2 {0}
         run: |

@@ -1,0 +1,25 @@
+# MSYS2 / UCRT64 packages for building Meson + GTK4 + Libadwaita
+mingw-w64-ucrt-x86_64-toolchain
+mingw-w64-ucrt-x86_64-python
+mingw-w64-ucrt-x86_64-python-pip
+mingw-w64-ucrt-x86_64-python-gobject
+mingw-w64-ucrt-x86_64-gtk4
+mingw-w64-ucrt-x86_64-libadwaita
+mingw-w64-ucrt-x86_64-meson
+mingw-w64-ucrt-x86_64-ninja
+mingw-w64-ucrt-x86_64-desktop-file-utils
+mingw-w64-ucrt-x86_64-gettext
+mingw-w64-ucrt-x86_64-itstool
+mingw-w64-ucrt-x86_64-glib2
+mingw-w64-ucrt-x86_64-gdal
+mingw-w64-ucrt-x86_64-python-gdal
+mingw-w64-ucrt-x86_64-python-pillow
+mingw-w64-ucrt-x86_64-python-numpy
+mingw-w64-ucrt-x86_64-python-matplotlib
+mingw-w64-ucrt-x86_64-python-scikit-image
+mingw-w64-ucrt-x86_64-python-shapely
+mingw-w64-ucrt-x86_64-python-trimesh
+mingw-w64-ucrt-x86_64-python-pandas
+mingw-w64-ucrt-x86_64-gobject-introspection-runtime
+mingw-w64-ucrt-x86_64-geos
+zip
