@@ -49,8 +49,6 @@ jobs:
           msystem: UCRT64
           install: ${{ steps.msys2-list.outputs.packages }}
 
-
-
       - name: Create and activate venv
         shell: msys2 {0}
         run: |
