@@ -15,19 +15,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache MSYS2 packages
-        uses: actions/cache@v3
-        with:
-          path: D:/a/_temp/msys64/ucrt64
-          key: msys2-${{ runner.os }}-ucrt64-${{ hashFiles('msys2-requirements.txt') }}
-
-      - name: Cache Python venv & pip
+      - name: Cache full MSYS2 environment
         uses: actions/cache@v3
         with:
           path: |
-            venv
-            ~/.cache/pip
-          key: pip-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('requirements.txt') }}
+            D:/a/_temp/msys64
+          key: msys2-full-${{ runner.os }}-${{ hashFiles('msys2-requirements.txt') }}
 
       - name: Read MSYS2 requirements
         id: msys2-list
