@@ -29,12 +29,19 @@ jobs:
             ~/.cache/pip
           key: pip-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('requirements.txt') }}
 
+      - name: Read MSYS2 requirements
+        id: msys2-list
+        run: |
+          # join all lines into a single multiline output
+          echo "packages<<EOF" >> $GITHUB_OUTPUT
+          cat msys2-requirements.txt  >> $GITHUB_OUTPUT
+          echo "EOF"       >> $GITHUB_OUTPUT
+
       - name: Set up MSYS2
         uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
-          install: |
-            ${{ join(fromJson(file('msys2-requirements.txt')), '\n') }}
+          install: ${{ steps.msys2-list.outputs.packages }}
 
       - name: Create and activate venv
         shell: msys2 {0}
