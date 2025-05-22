@@ -116,7 +116,7 @@ jobs:
           source venv/bin/activate
           export PATH="/ucrt64/bin:$PATH"
           pip install pyinstaller
-          pyinstaller stratum.spec
+          pyinstaller --log-level=DEBUG stratum.spec
 
       - name: Upload Executable
         uses: actions/upload-artifact@v4
