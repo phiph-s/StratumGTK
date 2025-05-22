@@ -17,7 +17,6 @@ mingw-w64-ucrt-x86_64-python-pillow
 mingw-w64-ucrt-x86_64-python-numpy
 mingw-w64-ucrt-x86_64-python-matplotlib
 mingw-w64-ucrt-x86_64-python-scikit-image
-mingw-w64-ucrt-x86_64-python-shapely
 mingw-w64-ucrt-x86_64-python-trimesh
 mingw-w64-ucrt-x86_64-python-pandas
 mingw-w64-ucrt-x86_64-gobject-introspection-runtime
