@@ -35,12 +35,10 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            // read & split on either LF or CRLF
             const lines = fs
               .readFileSync('msys2-requirements.txt', 'utf8')
               .split(/\r?\n/)
               .filter(line => line.trim().length > 0);
-            // join back with Unix‐style newlines
             core.setOutput('packages', lines.join('\n'));
 
       - name: Set up MSYS2
@@ -48,6 +46,25 @@ jobs:
         with:
           msystem: UCRT64
           install: ${{ steps.msys2-list.outputs.packages }}
+
+      - name: Debug GEOS DLL location
+        shell: msys2 {0}
+        run: |
+          echo "Checking for GEOS C DLL in /ucrt64/bin:"
+          find /ucrt64/bin -iname '*geos*_*.dll' -exec ls -lh {} \;
+
+          echo
+          echo "Looking inside Python's site-packages for Shapely:"
+          python -c "import shapely, os; print('Shapely installed at:', os.path.dirname(shapely.__file__))"
+
+          echo
+          echo "Listing any DLLs already bundled with Shapely:"
+          PY_SITE=$(python -c "import shapely, os; print(os.path.dirname(shapely.__file__))")
+          find $PY_SITE -type f -iname '*.dll' -o -iname '*.so'
+
+          echo
+          echo "Checking .libs folder (if exists):"
+          find $PY_SITE/.libs 2>/dev/null || echo ".libs folder not found"
 
       - name: Create and activate venv
         shell: msys2 {0}
@@ -61,14 +78,13 @@ jobs:
         run: |
           source venv/bin/activate
           export GDAL_VERSION=$(gdal-config --version)
-          export GDAL_INCLUDE_PATH=$(gdal-config --cflags | sed -n 's/.*-I\([^ ]*\).*/\1/p')
-          export GDAL_LIBRARY_PATH=$(gdal-config --libs | sed -n 's/.*-L\([^ ]*\).*/\1/p')
+          export GDAL_INCLUDE_PATH=$(gdal-config --cflags | sed -n 's/.*-I[^ ]*.*/\1/p')
+          export GDAL_LIBRARY_PATH=$(gdal-config --libs | sed -n 's/.*-L[^ ]*.*/\1/p')
           echo "Using GDAL_VERSION=$GDAL_VERSION"
           echo "Using GDAL_INCLUDE_PATH=$GDAL_INCLUDE_PATH"
           echo "Using GDAL_LIBRARY_PATH=$GDAL_LIBRARY_PATH"
           pip install -r requirements.txt
           find D:/a/_temp/msys64/ucrt64 -name "*.typelib"
-
 
       - name: Configure and build with Meson
         shell: msys2 {0}
@@ -91,7 +107,6 @@ jobs:
         with:
           name: drucken3d-windows
           path: dist/drucken3d
-
 
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
