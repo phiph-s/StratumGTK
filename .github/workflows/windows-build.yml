@@ -31,24 +31,24 @@ jobs:
 
       - name: Read MSYS2 requirements
         id: msys2-list
-        shell: bash                # ← make sure we’re in bash!
-        run: |
-          # start a multi-line output called "packages"
-          echo "packages<<EOF" >> $GITHUB_OUTPUT
-      
-          # strip blank lines AND any stray CR (\r) at end of lines
-          sed -e '/^[[:space:]]*$/d' -e 's/\r$//' msys2-requirements.txt \
-            >> $GITHUB_OUTPUT
-      
-          # close our EOF block
-          echo "EOF" >> $GITHUB_OUTPUT
-
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            // read & split on either LF or CRLF
+            const lines = fs
+              .readFileSync('msys2-requirements.txt', 'utf8')
+              .split(/\r?\n/)
+              .filter(line => line.trim().length > 0);
+            // join back with Unix‐style newlines
+            core.setOutput('packages', lines.join('\n'));
 
       - name: Set up MSYS2
         uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
           install: ${{ steps.msys2-list.outputs.packages }}
+
 
 
       - name: Create and activate venv
