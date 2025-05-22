@@ -39,6 +39,7 @@ jobs:
           # end our multiline output
           echo "EOF" >> $GITHUB_OUTPUT
 
+
       - name: Set up MSYS2
         uses: msys2/setup-msys2@v2
         with:
