@@ -84,8 +84,8 @@ jobs:
         run: |
           source venv/bin/activate
           PY_SITE=$(python -c "import shapely, os; print(os.path.dirname(shapely.__file__))")
-          mkdir -p "$PY_SITE/.libs"
-          cp /ucrt64/bin/libgeos_c.dll "$PY_SITE/.libs/geos_c.dll"
+          mkdir -p "$PY_SITE/DLLs"
+          cp /ucrt64/bin/libgeos_c.dll "$PY_SITE/DLLs/geos_c.dll"
 
       - name: Verify .libs content after patch
         shell: msys2 {0}
