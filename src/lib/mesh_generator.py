@@ -19,9 +19,9 @@ from trimesh.path.packing import meshes
 
 # Configuration defaults
 OUTPUT_DIR = 'meshes'
-SIMPLIFY_TOLERANCE = 1  # Simplify tolerance for raw polygons
+SIMPLIFY_TOLERANCE = 0.4  # Simplify tolerance for raw polygons
 SMOOTHING_WINDOW = 3  # Window size for contour smoothing
-MIN_AREA = 0.5  # Minimum polygon area to keep
+MIN_AREA = 1  # Minimum polygon area to keep
 
 def timed(func):
     @wraps(func)
